@@ -2260,8 +2260,8 @@ window._wppAcessoCliente = function(cid) {
   // Link correto: governo → clienteOficial, demais → cliente
   const isGov = c.tipoCliente === 'governo';
   const portalBase = isGov
-    ? 'https://tsvalencio-ia.github.io/ERP-CODEX3/clienteOficial.html'
-    : 'https://tsvalencio-ia.github.io/ERP-CODEX3/cliente.html';
+    ? 'https://tsvalencio-ia.github.io/OFICIN-IA/clienteOficial.html'
+    : 'https://tsvalencio-ia.github.io/OFICIN-IA/cliente.html';
   const link = `${portalBase}?tenant=${encodeURIComponent(J.tid || '')}`;
   const msg =
     `Olá ${c.nome.split(' ')[0]}! 👋\n\n` +
