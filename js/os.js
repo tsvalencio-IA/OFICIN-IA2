@@ -184,6 +184,77 @@ function atualizarResumoDescontosOS(dados) {
 }
 window.atualizarResumoDescontosOS = atualizarResumoDescontosOS;
 
+function garantirResumoDescontoTopoOS() {
+  const totalsGrid = document.querySelector('.os-totals-inline') || document.getElementById('osTotalValMirror')?.closest('.os-totals-grid');
+  if (!totalsGrid) return null;
+  let el = document.getElementById('osResumoDescontosTopoLive');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'osResumoDescontosTopoLive';
+    el.style.cssText = 'margin-top:10px;display:grid;grid-template-columns:repeat(3,minmax(160px,1fr));gap:8px;font-family:var(--fm);grid-column:1/-1;';
+    totalsGrid.insertAdjacentElement('afterend', el);
+  }
+  return el;
+}
+
+function renderResumoDescontoCardsOS(el, dados) {
+  if (!el) return;
+  const brutoServicos = numBR(dados?.brutoServicos || 0);
+  const liquidoServicos = numBR(dados?.liquidoServicos || 0);
+  const brutoPecas = numBR(dados?.brutoPecas || 0);
+  const liquidoPecas = numBR(dados?.liquidoPecas || 0);
+  const descontoServicos = Math.max(0, brutoServicos - liquidoServicos);
+  const descontoPecas = Math.max(0, brutoPecas - liquidoPecas);
+  const card = (titulo, pct, bruto, desc, liquido) => `
+    <div style="background:rgba(167,139,250,.08);border:1px solid rgba(167,139,250,.22);border-radius:6px;padding:9px;line-height:1.35;min-width:0;">
+      <div style="font-size:.62rem;color:#A78BFA;font-weight:900;letter-spacing:.8px;text-transform:uppercase;margin-bottom:2px;">${escOS(titulo)}${pct ? ` · ${escOS(pct)}` : ``}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px;color:var(--muted);font-size:.66rem;"><span>Bruto</span><b>${moedaOS(bruto)}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;color:var(--warn);font-size:.66rem;"><span>Desconto</span><b>- ${moedaOS(desc)}</b></div>
+      <div style="display:flex;justify-content:space-between;gap:8px;color:var(--success);font-size:.70rem;"><span>Líquido</span><b>${moedaOS(liquido)}</b></div>
+    </div>`;
+  el.innerHTML =
+    card('Mão de obra / serviços', pctOS(dados?.descMO || 0), brutoServicos, descontoServicos, liquidoServicos) +
+    card('Peças', pctOS(dados?.descPeca || 0), brutoPecas, descontoPecas, liquidoPecas) +
+    card('Total com desconto', '', brutoServicos + brutoPecas, descontoServicos + descontoPecas, liquidoServicos + liquidoPecas);
+}
+
+function atualizarResumoDescontosCompletoOS(dados) {
+  atualizarResumoDescontosOS(dados);
+  renderResumoDescontoCardsOS(garantirResumoDescontoTopoOS(), dados);
+}
+window.atualizarResumoDescontosCompletoOS = atualizarResumoDescontosCompletoOS;
+
+function garantirBoxDescontoLinhaOS(row, tipo) {
+  if (!row) return null;
+  let box = row.querySelector(`.${tipo}-desc-box`);
+  if (!box) {
+    box = document.createElement('div');
+    box.className = `${tipo}-desc-box`;
+    box.style.cssText = 'grid-column:1/-1;display:flex;justify-content:flex-end;gap:12px;align-items:center;font-family:var(--fm);font-size:.66rem;color:var(--muted);border-top:1px dashed rgba(255,255,255,.10);padding-top:5px;margin-top:2px;';
+    box.innerHTML = `
+      <span class="${tipo}-bruto-val">Bruto: R$ 0,00</span>
+      <span class="${tipo}-desc-pct" style="color:var(--purple,#A78BFA);">-0,0%</span>
+      <span class="${tipo}-desc-econ" style="color:var(--warn);">Desc.: R$ 0,00</span>
+      <strong class="${tipo}-desc-val" style="color:var(--success);">Líquido: R$ 0,00</strong>`;
+    row.appendChild(box);
+  }
+  return box;
+}
+
+function atualizarBoxDescontoLinhaOS(row, tipo, bruto, liquido, taxa) {
+  const box = garantirBoxDescontoLinhaOS(row, tipo);
+  if (!box) return;
+  const desconto = Math.max(0, numBR(bruto) - numBR(liquido));
+  const brutoEl = box.querySelector(`.${tipo}-bruto-val`);
+  const pctEl = box.querySelector(`.${tipo}-desc-pct`);
+  const econEl = box.querySelector(`.${tipo}-desc-econ`);
+  const liqEl = box.querySelector(`.${tipo}-desc-val`);
+  if (brutoEl) brutoEl.textContent = `Bruto: ${moedaOS(bruto)}`;
+  if (pctEl) pctEl.textContent = '-' + (taxaDescontoOS(taxa) * 100).toFixed(1).replace('.', ',') + '%';
+  if (econEl) econEl.textContent = `Desc.: ${moedaOS(desconto)}`;
+  if (liqEl) liqEl.textContent = `Líquido: ${moedaOS(liquido)}`;
+}
+
 function atualizarMetaServicoLinhaOS(row) {
   if (!row) return;
   const veiculoAtual = window._osVeiculoAtual?.() || {};
@@ -1049,6 +1120,7 @@ window.calcOSTotal = function() {
         const pctBox = row.querySelector('.serv-desc-pct');
         if (pctBox) pctBox.textContent = '-' + (descMO * 100).toFixed(1).replace('.', ',') + '%';
         if (descBox) descBox.textContent = 'R$ ' + vFinal.toFixed(2).replace('.', ',');
+        atualizarBoxDescontoLinhaOS(row, 'serv', vBruto, vFinal, descMO);
         totalServicos += vFinal;
         if (desc || vBruto || tempo) {
             const sel = row.querySelector('.serv-secao-hora');
@@ -1086,6 +1158,7 @@ window.calcOSTotal = function() {
         const pctBox = row.querySelector('.serv-desc-pct');
         if (pctBox) pctBox.textContent = '-' + (descMO * 100).toFixed(1).replace('.', ',') + '%';
         if (descBox) descBox.textContent = 'R$ ' + vFinal.toFixed(2).replace('.', ',');
+        atualizarBoxDescontoLinhaOS(row, 'serv', vBruto, vFinal, descMO);
         totalServicos += vFinal;
         if (desc || vBruto || tempo) {
             const sel = row.querySelector('.serv-secao-hora');
@@ -1123,6 +1196,7 @@ window.calcOSTotal = function() {
         const pctBox = row.querySelector('.peca-desc-pct') || row.querySelector('.peca-desc-box div:first-child');
         if (pctBox) pctBox.textContent = '-' + (descPeca * 100).toFixed(1).replace('.', ',') + '%';
         if (descBox) descBox.textContent = 'R$ ' + vFinal.toFixed(2).replace('.', ',');
+        atualizarBoxDescontoLinhaOS(row, 'peca', vBruto, vFinal, descPeca);
         totalPecas += vFinal;
     });
 
@@ -1132,7 +1206,7 @@ window.calcOSTotal = function() {
     if ($('osTotalPecasVal')) $('osTotalPecasVal').innerText = totalPecas.toFixed(2).replace('.', ',');
     if ($('osTotalValMirror')) $('osTotalValMirror').innerText = total.toFixed(2).replace('.', ',');
     if ($('osTotalHidden')) $('osTotalHidden').value = total;
-    atualizarResumoDescontosOS({
+    atualizarResumoDescontosCompletoOS({
       descMO,
       descPeca,
       brutoServicos,
@@ -2367,6 +2441,54 @@ window.baixarEstoquePecasReais = async function(osId, antigas, novas) {
   }
 };
 
+function statusOptionsExecOS(tipo, atual) {
+  const opts = tipo === 'peca'
+    ? [
+        ['pendente', 'Pendente'],
+        ['trocada', 'Peça trocada/executada'],
+        ['nao_encontrada', 'Peça não encontrada'],
+        ['nao_trocada', 'Não trocada']
+      ]
+    : [
+        ['pendente', 'Pendente'],
+        ['em_execucao', 'Em execução'],
+        ['executado', 'Serviço executado'],
+        ['nao_executado', 'Não executado']
+      ];
+  return opts.map(([value, label]) => `<option value="${value}" ${value === atual ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+window.salvarExecucaoAprovadosOS = async function(osId) {
+  if (!osId) { window.toast?.('Salve a O.S. antes de marcar execução.', 'warn'); return; }
+  const osAtual = (window.J?.os || []).find(o => o.id === osId) || {};
+  const execucaoItens = { ...(osAtual.execucaoItens || {}) };
+  const rows = document.querySelectorAll('#resumoAprovacaoOS .execucao-aprovado-row');
+  rows.forEach(row => {
+    const key = row.dataset.key;
+    if (!key) return;
+    execucaoItens[key] = {
+      key,
+      tipo: row.dataset.tipo || '',
+      status: row.querySelector('.exec-status')?.value || 'pendente',
+      obs: row.querySelector('.exec-obs')?.value?.trim() || '',
+      usuario: window.J?.nome || 'Gestor',
+      updatedAt: new Date().toISOString()
+    };
+  });
+  const timeline = Array.isArray(osAtual.timeline) ? osAtual.timeline.slice() : [];
+  timeline.push({
+    dt: new Date().toISOString(),
+    user: window.J?.nome || 'Gestor',
+    acao: `Atualizou execução interna de ${rows.length} item(ns) aprovado(s).`
+  });
+  await db.collection('ordens_servico').doc(osId).update(limparUndefinedFirestoreOS({
+    execucaoItens,
+    timeline,
+    updatedAt: new Date().toISOString()
+  }));
+  window.toast?.('Execução interna salva.', 'ok');
+};
+
 window.aplicarMarcadoresAprovacaoOS = function(os) {
   const U = OSU();
   document.getElementById('resumoAprovacaoOS')?.remove();
@@ -2374,6 +2496,7 @@ window.aplicarMarcadoresAprovacaoOS = function(os) {
   if (!U.hasApproval?.(os)) return;
   const keys = U.getApprovedKeys?.(os) || new Set();
   const badge = key => `<div class="aprovacao-item-badge" style="grid-column:1/-1;font-family:var(--fm);font-size:.62rem;letter-spacing:.8px;color:${keys.has(key) ? 'var(--success)' : 'var(--danger)'};border-top:1px dashed rgba(255,255,255,.12);padding-top:5px;margin-top:2px;">${keys.has(key) ? 'APROVADO NO ORÇAMENTO' : 'NÃO APROVADO - MANTIDO APENAS COMO HISTÓRICO'}</div>`;
+
   document.querySelectorAll('#containerServicosOS > div').forEach((row, idx) => {
     row.querySelector('.aprovacao-item-badge')?.remove();
     row.insertAdjacentHTML('beforeend', badge('servico-' + idx));
@@ -2382,21 +2505,47 @@ window.aplicarMarcadoresAprovacaoOS = function(os) {
     row.querySelector('.aprovacao-item-badge')?.remove();
     row.insertAdjacentHTML('beforeend', badge('peca-' + idx));
   });
+  document.querySelectorAll('#containerPecasOS .cilia-peca-wrap').forEach((wrap, idx) => {
+    const pecaRow = wrap.querySelector('[data-cilia="1"], [data-peca-avulsa="1"]');
+    if (pecaRow) {
+      pecaRow.querySelector('.aprovacao-item-badge')?.remove();
+      pecaRow.insertAdjacentHTML('beforeend', badge('peca-' + idx));
+    }
+  });
+
   const cliente = (window.J?.clientes || []).find(c => c.id === os?.clienteId);
   const itens = U.buildBudgetItems?.(os, cliente) || [];
   const aprovados = itens.filter(it => keys.has(it.key));
   const historico = itens.filter(it => !keys.has(it.key));
   const totalAprovado = os?.totalAprovado != null ? numBR(os.totalAprovado) : aprovados.reduce((sum, it) => sum + numBR(it.valorFinal), 0);
   const moeda = U.moeda || (v => 'R$ ' + numBR(v).toFixed(2).replace('.', ','));
+  const exec = os?.execucaoItens || {};
+  const execHtml = aprovados.length ? `
+    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.12);padding-top:12px;">
+      <div style="font-family:var(--fm);font-size:.72rem;color:var(--cyan);font-weight:800;letter-spacing:1px;margin-bottom:8px;">EXECUÇÃO INTERNA DOS ITENS APROVADOS</div>
+      <div style="font-family:var(--fm);font-size:.60rem;color:var(--muted);margin-bottom:8px;">Controle interno da oficina/equipe. O cliente não vê estas marcações.</div>
+      <div style="display:grid;gap:7px;">
+        ${aprovados.map(it => {
+          const e = exec[it.key] || {};
+          return `<div class="execucao-aprovado-row" data-key="${escOS(it.key)}" data-tipo="${escOS(it.tipo)}" style="display:grid;grid-template-columns:minmax(230px,1fr) 180px minmax(200px,1fr);gap:7px;align-items:center;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.10);border-radius:3px;padding:8px;">
+            <div style="font-size:.75rem;color:var(--text);"><b>${escOS(it.labelTipo || it.tipo)}</b> ${it.codigo ? '[' + escOS(it.codigo) + '] ' : ''}${escOS(it.desc || '-')}${it.tempo ? `<br><small style="color:var(--muted);">TMO ${String(it.tempo).replace('.', ',')}h</small>` : ''}</div>
+            <select class="j-select exec-status" style="font-size:.72rem;">${statusOptionsExecOS(it.tipo, e.status || 'pendente')}</select>
+            <input class="j-input exec-obs" value="${escOS(e.obs || '')}" placeholder="Observação interna: peça não encontrada, aguardando, executado...">
+          </div>`;
+        }).join('')}
+      </div>
+      <button type="button" class="btn-primary" style="margin-top:10px;" onclick="window.salvarExecucaoAprovadosOS('${escOS(os.id || '')}')">SALVAR EXECUÇÃO INTERNA</button>
+    </div>` : '';
   const resumo = document.createElement('div');
   resumo.id = 'resumoAprovacaoOS';
   resumo.className = 'aprovacao-resumo';
   resumo.innerHTML = `
-    <h4>ORCAMENTO APROVADO - ${aprovados.length}/${itens.length} ITEM(NS) - ${moeda(totalAprovado)}</h4>
+    <h4>ORÇAMENTO APROVADO - ${aprovados.length}/${itens.length} ITEM(NS) - ${moeda(totalAprovado)}</h4>
     <div class="aprovacao-resumo-grid">
       ${aprovados.map(it => `<div class="aprovacao-resumo-item"><strong style="color:var(--success);">APROVADO</strong><br>${escOS(it.labelTipo || it.tipo)} ${it.codigo ? '[' + escOS(it.codigo) + '] ' : ''}${escOS(it.desc || '-')}${it.tempo ? `<br><small>TMO ${String(it.tempo).replace('.', ',')}h</small>` : ''}<br><b>${moeda(it.valorFinal)}</b></div>`).join('')}
-      ${historico.map(it => `<div class="aprovacao-resumo-item nao"><strong style="color:var(--warn);">NAO APROVADO</strong><br>${escOS(it.labelTipo || it.tipo)} ${it.codigo ? '[' + escOS(it.codigo) + '] ' : ''}${escOS(it.desc || '-')}<br><small>Mantido no historico do orçamento.</small></div>`).join('')}
-    </div>`;
+      ${historico.map(it => `<div class="aprovacao-resumo-item nao"><strong style="color:var(--warn);">NÃO APROVADO</strong><br>${escOS(it.labelTipo || it.tipo)} ${it.codigo ? '[' + escOS(it.codigo) + '] ' : ''}${escOS(it.desc || '-')}<br><small>Mantido no histórico do orçamento.</small></div>`).join('')}
+    </div>
+    ${execHtml}`;
   const alvo = document.getElementById('containerServicosOS')?.closest('div');
   if (alvo) alvo.insertAdjacentElement('beforebegin', resumo);
 };
