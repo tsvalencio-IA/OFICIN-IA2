@@ -15,8 +15,22 @@ const taxaDescontoOS = value => {
 };
 const escOS = value => (OSU().escapeHtml ? OSU().escapeHtml(value) : String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
 
+function isFirestoreSentinelOS(value) {
+  if (!value || typeof value !== 'object') return false;
+  const ctor = String(value.constructor?.name || '');
+  // Compat Firebase v8/v9: FieldValue.delete(), serverTimestamp(), arrayUnion(), etc.
+  // Esses objetos NÃO podem ser percorridos/limpos, senão o update perde o sentinel.
+  return Boolean(
+    value._methodName ||
+    value._delegate?._methodName ||
+    value._toFieldTransform ||
+    /FieldValue|DeleteFieldValue|ServerTimestamp|ArrayUnion|ArrayRemove/i.test(ctor)
+  );
+}
+
 function limparUndefinedFirestoreOS(value) {
   if (value === undefined) return undefined;
+  if (isFirestoreSentinelOS(value)) return value;
   if (value === null) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (Array.isArray(value)) {
@@ -33,6 +47,67 @@ function limparUndefinedFirestoreOS(value) {
     return out;
   }
   return value;
+}
+
+function firestoreDeleteFieldOS() {
+  try {
+    return window.firebase?.firestore?.FieldValue?.delete?.() || firebase.firestore.FieldValue.delete();
+  } catch(e) {
+    console.warn('FieldValue.delete indisponível; usando null como fallback.', e);
+    return null;
+  }
+}
+
+function normalizarStatusFluxoOS(status) {
+  return String(status || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+}
+
+function statusReabreEdicaoOrcamentoOS(status) {
+  const s = normalizarStatusFluxoOS(status);
+  // Só reabre orçamento real. Não inclui Orcamento_Enviado porque esse status ainda é envio ao cliente.
+  return s === 'triagem' || s === 'orcamento' || s === 'em_orcamento' || s === 'em orcamento';
+}
+
+function osTemAprovacaoAtivaOS(os) {
+  if (!os) return false;
+  if (typeof OSU().hasApproval === 'function') return !!OSU().hasApproval(os);
+  return Boolean(
+    os.aprovacao ||
+    os.totalAprovado != null ||
+    (Array.isArray(os.itensAprovados) && os.itensAprovados.length > 0) ||
+    (os.execucaoItens && Object.keys(os.execucaoItens || {}).length > 0)
+  );
+}
+
+function montarRegistroReaberturaAprovacaoOS(osAntes, statusDestino, origem) {
+  return {
+    reabertoEm: new Date().toISOString(),
+    reabertoPor: window.J?.nome || 'Gestor',
+    reabertoPorTipo: 'jarvis',
+    origem: origem || 'os',
+    statusAnterior: osAntes?.status || '',
+    statusDestino: statusDestino || '',
+    aprovacaoAnterior: osAntes?.aprovacao || null,
+    itensAprovadosAnteriores: Array.isArray(osAntes?.itensAprovados) ? osAntes.itensAprovados : [],
+    totalAprovadoAnterior: osAntes?.totalAprovado ?? null,
+    execucaoItensAnterior: osAntes?.execucaoItens || null
+  };
+}
+
+function aplicarReaberturaAprovacaoNoPayloadOS(payload, osAntes, statusDestino, origem) {
+  const historico = Array.isArray(osAntes?.aprovacaoHistorico) ? osAntes.aprovacaoHistorico.slice() : [];
+  historico.push(montarRegistroReaberturaAprovacaoOS(osAntes, statusDestino, origem));
+  payload.aprovacaoHistorico = historico;
+  payload.aprovacao = firestoreDeleteFieldOS();
+  payload.itensAprovados = firestoreDeleteFieldOS();
+  payload.totalAprovado = firestoreDeleteFieldOS();
+  payload.execucaoItens = firestoreDeleteFieldOS();
+  payload.aprovacaoAtiva = false;
+  payload.reabertoParaEdicaoEm = new Date().toISOString();
+  payload.reabertoParaEdicaoPor = window.J?.nome || 'Gestor';
+  return historico[historico.length - 1];
 }
 
 function usuarioPodeDispararWppProntoOS() {
@@ -436,7 +511,20 @@ window.moverStatusOS = async function(id, novoStatus) {
         return;
     }
 
-    await db.collection('ordens_servico').doc(id).update({ status: novoStatus, updatedAt: new Date().toISOString() });
+    const updateStatus = { status: novoStatus, updatedAt: new Date().toISOString() };
+
+    if (statusReabreEdicaoOrcamentoOS(novoStatus) && osTemAprovacaoAtivaOS(osAntes)) {
+        aplicarReaberturaAprovacaoNoPayloadOS(updateStatus, osAntes, novoStatus, 'kanban');
+        const tl = Array.isArray(osAntes.timeline) ? osAntes.timeline.slice() : [];
+        tl.push({
+            dt: new Date().toISOString(),
+            user: J.nome || 'Gestor',
+            acao: `Reabriu a O.S. para edição/reorçamento. Aprovação ativa arquivada ao voltar para ${novoStatus}.`
+        });
+        updateStatus.timeline = tl;
+    }
+
+    await db.collection('ordens_servico').doc(id).update(limparUndefinedFirestoreOS(updateStatus));
     window.toast(`✓ Movido para ${novoStatus.replace('_', ' ')}`);
     audit('KANBAN', `Moveu OS ${id.slice(-6)} de "${statusAntes}" para "${novoStatus}"`);
 
@@ -1409,7 +1497,15 @@ window.salvarOS = async function() {
 
   const oldOSParaAprovacao = osId ? (J.os.find(x => x.id === osId) || {}) : {};
   const statusPedeAprovacao = ['Aprovado', 'Andamento'].includes(payload.status);
-  if (statusPedeAprovacao && !OSU().hasApproval?.(oldOSParaAprovacao)) {
+  const reabrindoParaEdicaoOS = !!(osId && statusReabreEdicaoOrcamentoOS(payload.status) && osTemAprovacaoAtivaOS(oldOSParaAprovacao));
+  let registroReaberturaAprovacaoOS = null;
+
+  if (reabrindoParaEdicaoOS) {
+      // Ao voltar uma O.S. aprovada para Triagem/Orçamento, ela precisa ficar editável.
+      // A aprovação NÃO é apagada da história: ela é arquivada em aprovacaoHistorico.
+      // Os campos ativos são removidos para não manter "aprovação fantasma" bloqueando serviços/peças.
+      registroReaberturaAprovacaoOS = aplicarReaberturaAprovacaoNoPayloadOS(payload, oldOSParaAprovacao, payload.status, 'salvar_os');
+  } else if (statusPedeAprovacao && !osTemAprovacaoAtivaOS(oldOSParaAprovacao)) {
       const cliAprov = (J.clientes || []).find(c => c.id === payload.clienteId);
       const aprov = await OSU().openApprovalModal?.({ id: osId || 'nova-os', ...oldOSParaAprovacao, ...payload }, {
           clientes: J.clientes,
@@ -1429,10 +1525,13 @@ window.salvarOS = async function() {
       };
       payload.itensAprovados = aprov.keys;
       payload.totalAprovado = aprov.totalAprovado;
-  } else if (oldOSParaAprovacao.totalAprovado != null) {
+      payload.aprovacaoAtiva = true;
+  } else if (!statusReabreEdicaoOrcamentoOS(payload.status) && osTemAprovacaoAtivaOS(oldOSParaAprovacao)) {
       payload.totalAprovado = oldOSParaAprovacao.totalAprovado;
       payload.aprovacao = oldOSParaAprovacao.aprovacao;
       payload.itensAprovados = oldOSParaAprovacao.itensAprovados || oldOSParaAprovacao.aprovacao?.itens?.map(i => i.key) || [];
+      if (oldOSParaAprovacao.execucaoItens) payload.execucaoItens = oldOSParaAprovacao.execucaoItens;
+      payload.aprovacaoAtiva = oldOSParaAprovacao.aprovacaoAtiva !== false;
   }
 
   // --- INÍCIO: DEEP DIFF E GATILHOS (AUDITORIA E WHATSAPP) ---
@@ -1637,7 +1736,15 @@ window.salvarOS = async function() {
       tl.push({ dt: new Date().toISOString(), user: funcUser, acao: `Abriu a O.S. (Status inicial: ${STATUS_MAP_LEGACY[payload.status] || payload.status})` });
   }
 
-  if (payload.aprovacao && !oldOSParaAprovacao.aprovacao) {
+  if (registroReaberturaAprovacaoOS) {
+      tl.push({
+          dt: new Date().toISOString(),
+          user: funcUser,
+          acao: `Reabriu a O.S. para edição/reorçamento. Aprovação ativa arquivada ao voltar para ${payload.status}.`
+      });
+  }
+
+  if (payload.aprovacao && !isFirestoreSentinelOS(payload.aprovacao) && !oldOSParaAprovacao.aprovacao) {
       tl.push({
           dt: new Date().toISOString(),
           user: funcUser,
@@ -1703,7 +1810,7 @@ window.salvarOS = async function() {
 
       {
         const parcelas = payload.pgtoParcelas;
-        const valorFinanceiro = numBR(payload.totalAprovado || oldOSParaAprovacao.totalAprovado || payload.total);
+        const valorFinanceiro = numBR((!isFirestoreSentinelOS(payload.totalAprovado) && payload.totalAprovado != null) ? payload.totalAprovado : (reabrindoParaEdicaoOS ? payload.total : (oldOSParaAprovacao.totalAprovado || payload.total)));
         payload.totalFaturado = valorFinanceiro;
         const valorParc = valorFinanceiro / parcelas;
         const placaRef  = payload.placa || J.veiculos.find(v => v.id === payload.veiculoId)?.placa || '';
