@@ -472,6 +472,219 @@
     });
   }
 
+
+  function chaveNaoVazia(value) {
+    const txt = limparTexto(value);
+    return txt && txt !== '-' && txt.toLowerCase() !== 'sem oem' ? txt : '';
+  }
+
+  function agruparComposicaoOS(linhasPecas, linhasServ) {
+    const grupos = (linhasPecas || []).map((p, idx) => ({ peca: p, idx, servicos: [] }));
+    const porCilia = new Map();
+    const porCodigo = new Map();
+
+    grupos.forEach(g => {
+      const cilia = chaveNaoVazia(g.peca.ciliaPieceIndex);
+      if (cilia && !porCilia.has(cilia)) porCilia.set(cilia, g);
+      const cod = chaveNaoVazia(g.peca.codigo).toUpperCase();
+      if (cod && !porCodigo.has(cod)) porCodigo.set(cod, g);
+    });
+
+    const soltos = [];
+    (linhasServ || []).forEach(s => {
+      let grupo = null;
+      const cilia = chaveNaoVazia(s.ciliaPieceIndex);
+      const codPeca = chaveNaoVazia(s.pecaCodigo).toUpperCase();
+
+      if (cilia && porCilia.has(cilia)) grupo = porCilia.get(cilia);
+      if (!grupo && codPeca && porCodigo.has(codPeca)) grupo = porCodigo.get(codPeca);
+      if (!grupo && s.relacionadoCilia && s.pecaDesc) {
+        const desc = normalizarSecao(s.pecaDesc);
+        grupo = grupos.find(g => desc && normalizarSecao(g.peca.desc).includes(desc));
+      }
+
+      if (grupo) grupo.servicos.push(s);
+      else soltos.push(s);
+    });
+
+    return { grupos, soltos };
+  }
+
+  function contarLinhasComposicaoOS(linhasPecas, linhasServ) {
+    if (!(linhasPecas || []).length && !(linhasServ || []).length) return 0;
+    const { grupos, soltos } = agruparComposicaoOS(linhasPecas, linhasServ);
+    return 2 + grupos.reduce((sum, g) => sum + 1 + g.servicos.length, 0) + (soltos.length ? 1 + soltos.length : 0);
+  }
+
+  function bordarLinhaOS(ws, row, tipo) {
+    const fill = tipo === 'titulo'
+      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } }
+      : tipo === 'peca'
+        ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEDED' } }
+        : tipo === 'grupo'
+          ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F3F3' } }
+          : null;
+    ['B','D','E','F','G','H'].forEach(col => {
+      const cell = ws.getCell(col + row);
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+      };
+      cell.alignment = { ...(cell.alignment || {}), vertical: 'middle', wrapText: true, shrinkToFit: true };
+      cell.font = { name: 'Arial', size: 9, bold: tipo === 'peca' || tipo === 'titulo' || tipo === 'grupo', color: { argb: 'FF000000' } };
+      if (fill) cell.fill = fill;
+    });
+  }
+
+  function tituloBlocoOS(ws, row, titulo) {
+    limparRangeResumo(ws, row);
+    safeUnmerge(ws, `B${row}:H${row}`);
+    ws.mergeCells(`B${row}:H${row}`);
+    setCell(ws, 'B' + row, titulo);
+    const cell = ws.getCell('B' + row);
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
+    cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF000000' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+    bordarLinhaOS(ws, row, 'titulo');
+    ws.getRow(row).height = 19;
+  }
+
+  function inserirCabecalhoComposicaoOS(ws, row) {
+    limparRangeResumo(ws, row);
+    setCell(ws, 'B' + row, 'ITEM / CÓDIGO');
+    setCell(ws, 'D' + row, 'DESCRIÇÃO');
+    setCell(ws, 'E' + row, 'QTD / H');
+    setCell(ws, 'F' + row, 'UNIT. / R$/H');
+    setCell(ws, 'G' + row, 'DESC.');
+    setCell(ws, 'H' + row, 'TOTAL');
+    bordarLinhaOS(ws, row, 'grupo');
+    ['E','F','G','H'].forEach(col => { ws.getCell(col + row).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true }; });
+    ws.getRow(row).height = 18;
+  }
+
+  function textoItemPeca(p) {
+    const linhas = ['PEÇA'];
+    if (p.codigo) linhas.push(`CÓD.: ${p.codigo}`);
+    return linhas.join('\n');
+  }
+
+  function textoItemServico(s) {
+    const linhas = ['SERVIÇO'];
+    if (s.codigo) linhas.push(`CÓD.: ${s.codigo}`);
+    if (s.sistema) linhas.push(`SIST.: ${s.sistema}`);
+    if (s.tipoVeiculo) linhas.push(`TIPO: ${s.tipoVeiculo}`);
+    return linhas.join('\n');
+  }
+
+  function inserirComposicaoOS(ws, startRow, linhasPecas, linhasServ) {
+    const totalRows = contarLinhasComposicaoOS(linhasPecas, linhasServ);
+    if (!totalRows) return 0;
+    const { grupos, soltos } = agruparComposicaoOS(linhasPecas, linhasServ);
+    let row = startRow;
+    tituloBlocoOS(ws, row++, 'COMPOSIÇÃO DA O.S. POR PEÇA E SERVIÇO VINCULADO');
+    inserirCabecalhoComposicaoOS(ws, row++);
+
+    grupos.forEach(g => {
+      const p = g.peca;
+      limparRangeResumo(ws, row);
+      setCell(ws, 'B' + row, textoItemPeca(p));
+      setCell(ws, 'D' + row, p.desc || 'PEÇA SEM DESCRIÇÃO');
+      setNumberCell(ws, 'E' + row, p.qtd, '0.##');
+      setMoneyCell(ws, 'F' + row, p.valorUnit);
+      setPercentCell(ws, 'G' + row, p.descPct);
+      setMoneyCell(ws, 'H' + row, p.total);
+      bordarLinhaOS(ws, row, 'peca');
+      ws.getRow(row).height = Math.max(24, 13 * String(ws.getCell('B' + row).value || '').split('\n').length);
+      row++;
+
+      g.servicos.forEach(s => {
+        limparRangeResumo(ws, row);
+        setCell(ws, 'B' + row, textoItemServico(s));
+        setCell(ws, 'D' + row, s.desc || 'SERVIÇO SEM DESCRIÇÃO');
+        setNumberCell(ws, 'E' + row, s.tempo, '0.00');
+        setMoneyCell(ws, 'F' + row, s.valorHora);
+        setPercentCell(ws, 'G' + row, s.descPct);
+        setMoneyCell(ws, 'H' + row, s.total);
+        bordarLinhaOS(ws, row, 'servico');
+        ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
+        row++;
+      });
+    });
+
+    if (soltos.length) {
+      limparRangeResumo(ws, row);
+      safeUnmerge(ws, `B${row}:H${row}`);
+      ws.mergeCells(`B${row}:H${row}`);
+      setCell(ws, 'B' + row, 'SERVIÇOS GERAIS / SEM PEÇA VINCULADA');
+      ws.getCell('B' + row).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
+      bordarLinhaOS(ws, row, 'grupo');
+      ws.getRow(row).height = 18;
+      row++;
+      soltos.forEach(s => {
+        limparRangeResumo(ws, row);
+        setCell(ws, 'B' + row, textoItemServico(s));
+        setCell(ws, 'D' + row, s.desc || 'SERVIÇO SEM DESCRIÇÃO');
+        setNumberCell(ws, 'E' + row, s.tempo, '0.00');
+        setMoneyCell(ws, 'F' + row, s.valorHora);
+        setPercentCell(ws, 'G' + row, s.descPct);
+        setMoneyCell(ws, 'H' + row, s.total);
+        bordarLinhaOS(ws, row, 'servico');
+        ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
+        row++;
+      });
+    }
+    return totalRows;
+  }
+
+  function contarLinhasKPIFinais(resumoSecoes) {
+    return 1 + 11 + ((resumoSecoes || []).length ? 2 + resumoSecoes.length : 0);
+  }
+
+  function linhaKPIFinal(ws, row, label, aux, valor, destaque) {
+    limparRangeResumo(ws, row);
+    safeUnmerge(ws, `B${row}:F${row}`);
+    ws.mergeCells(`B${row}:F${row}`);
+    setCell(ws, 'B' + row, label);
+    setCell(ws, 'G' + row, aux || '');
+    setMoneyCell(ws, 'H' + row, valor);
+    estilizarResumo(ws, row, !!destaque);
+    ws.getCell('G' + row).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+    ws.getRow(row).height = destaque ? 24 : 18;
+  }
+
+  function inserirKPIsFinaisOS(ws, startRow, linhasPecas, linhasServ, resumoSecoes) {
+    let row = startRow;
+    const brutoPecas = (linhasPecas || []).reduce((sum, p) => sum + n(p.bruto || 0), 0);
+    const liquidoPecas = (linhasPecas || []).reduce((sum, p) => sum + n(p.total || 0), 0);
+    const brutoMO = (linhasServ || []).reduce((sum, s) => sum + n(s.bruto || 0), 0);
+    const liquidoMO = (linhasServ || []).reduce((sum, s) => sum + n(s.total || 0), 0);
+    const horasMO = (linhasServ || []).reduce((sum, s) => sum + n(s.tempo || 0), 0);
+    const descPecas = +(brutoPecas - liquidoPecas).toFixed(2);
+    const descMO = +(brutoMO - liquidoMO).toFixed(2);
+    const brutoTotal = +(brutoPecas + brutoMO).toFixed(2);
+    const liquidoTotal = +(liquidoPecas + liquidoMO).toFixed(2);
+    const descTotal = +(descPecas + descMO).toFixed(2);
+
+    tituloBlocoOS(ws, row++, 'KPIs FINAIS DA O.S.');
+    linhaKPIFinal(ws, row++, 'QTDE / VALOR BRUTO DE PEÇAS', `${(linhasPecas || []).length} peça(s)`, brutoPecas);
+    linhaKPIFinal(ws, row++, 'DESCONTO TOTAL EM PEÇAS', '', descPecas);
+    linhaKPIFinal(ws, row++, 'VALOR LÍQUIDO DE PEÇAS', '', liquidoPecas);
+    linhaKPIFinal(ws, row++, 'QTDE / VALOR BRUTO DE SERVIÇOS', `${(linhasServ || []).length} serviço(s) · ${horasMO.toFixed(2).replace('.', ',')} h`, brutoMO);
+    linhaKPIFinal(ws, row++, 'DESCONTO TOTAL EM MÃO DE OBRA', '', descMO);
+    linhaKPIFinal(ws, row++, 'VALOR LÍQUIDO DE MÃO DE OBRA', '', liquidoMO);
+    linhaKPIFinal(ws, row++, 'TOTAL BRUTO DA O.S.', '', brutoTotal);
+    linhaKPIFinal(ws, row++, 'DESCONTO TOTAL DA O.S.', '', descTotal);
+    linhaKPIFinal(ws, row++, 'TOTAL LÍQUIDO / CONTRATO', '', liquidoTotal, true);
+    linhaKPIFinal(ws, row++, 'TOTAL DE HORAS DE MÃO DE OBRA', `${horasMO.toFixed(2).replace('.', ',')} h`, 0, false);
+    linhaKPIFinal(ws, row++, 'TOTAL DE ITENS NA O.S.', `${(linhasPecas || []).length} peça(s) + ${(linhasServ || []).length} serviço(s)`, liquidoTotal, false);
+
+    if ((resumoSecoes || []).length) {
+      inserirResumoSecoes(ws, row, resumoSecoes);
+    }
+  }
+
   function formatarCabecalhoPM(texto) {
     let raw = String(texto || '');
     if (!/\r?\n/.test(raw)) {
@@ -520,8 +733,13 @@
         desc: limparTexto(s.desc || ''),
         tempo,
         valorHora,
+        bruto: +(valorHora * tempo).toFixed(2),
         descPct: descMO,
-        total: totalFinal
+        total: totalFinal,
+        relacionadoCilia: !!s.relacionadoCilia,
+        ciliaPieceIndex: s.ciliaPieceIndex != null ? String(s.ciliaPieceIndex) : '',
+        pecaCodigo: limparTexto(s.pecaCodigo || s.codigoPeca || ''),
+        pecaDesc: limparTexto(s.pecaDesc || s.descricaoPeca || '')
       };
     });
 
@@ -534,8 +752,10 @@
         desc: limparTexto(p.desc || p.descricao || ''),
         qtd,
         valorUnit,
+        bruto: +(qtd * valorUnit).toFixed(2),
         descPct: descPeca,
-        total: totalFinal
+        total: totalFinal,
+        ciliaPieceIndex: p.ciliaPieceIndex != null ? String(p.ciliaPieceIndex) : ''
       };
     });
 
@@ -577,14 +797,20 @@
     inserirLinhasExtras(ws, pecaTotalBase, pecaEndBase, pecaExtra);
     const pecaEnd = pecaEndBase + pecaExtra;
     const pecaTotal = pecaTotalBase + pecaExtra;
-    const totalGeralRow = pecaTotal + 1;
-    const vistoriaRow = pecaTotal + 2;
-    const resumoPecasRow = pecaTotal + 3;
-    const resumoMORow = pecaTotal + 4;
-    const resumoTotalRow = pecaTotal + 5;
-    const contratoRow = pecaTotal + 6;
-    const dataRow = pecaTotal + 7;
-    const representanteRow = pecaTotal + 11;
+    const composicaoRows = contarLinhasComposicaoOS(linhasPecas, linhasServ);
+    const kpiFinalRows = contarLinhasKPIFinais(resumoSecoes);
+    const extraFinalOS = composicaoRows + kpiFinalRows;
+    if (extraFinalOS) {
+      ws.spliceRows(pecaTotal + 1, 0, ...Array.from({ length: extraFinalOS }, () => []));
+    }
+    const totalGeralRow = pecaTotal + 1 + extraFinalOS;
+    const vistoriaRow = pecaTotal + 2 + extraFinalOS;
+    const resumoPecasRow = pecaTotal + 3 + extraFinalOS;
+    const resumoMORow = pecaTotal + 4 + extraFinalOS;
+    const resumoTotalRow = pecaTotal + 5 + extraFinalOS;
+    const contratoRow = pecaTotal + 6 + extraFinalOS;
+    const dataRow = pecaTotal + 7 + extraFinalOS;
+    const representanteRow = pecaTotal + 11 + extraFinalOS;
 
     const cabecalho = dc.cabecalho || 'SECRETARIA DA SEGURANCA PUBLICA\nPOLICIA MILITAR DO ESTADO DE SAO PAULO';
     const representante = dt.representante;
@@ -660,6 +886,8 @@
     linhaTotalServicos(ws, servTotal, totalHoras, totalMO);
     inserirResumoSecoes(ws, servTotal + 1, resumoSecoes);
     linhaTotalPecas(ws, pecaTotal, totalPecas);
+    inserirComposicaoOS(ws, pecaTotal + 1, linhasPecas, linhasServ);
+    inserirKPIsFinaisOS(ws, pecaTotal + 1 + composicaoRows, linhasPecas, linhasServ, resumoSecoes);
     linhaResumoValor(ws, totalGeralRow, 'TOTAL GERAL', 0, { blankValue: true });
     linhaResumoValor(ws, vistoriaRow, 'VALOR DA VISTORIA TECNICA COMPLEMENTAR AO ESCOPO DE SERVICOS', 0, { blankValue: true });
     linhaResumoValor(ws, resumoPecasRow, 'VALOR TOTAL DE PECAS', totalPecas);
@@ -730,7 +958,45 @@
     rows.push(['CODIGO DA PECA (CODIGO ORIGINAL)','DESCRICAO','QTD','VALOR UNITARIO REGISTRADO','DESC','VALOR']);
     linhasPecas.forEach(p => rows.push([p.codigo, p.desc, p.qtd, p.valorUnit, p.descPct, p.total]));
     rows.push(['TOTAL DE PECAS', '', '', '', '', linhasPecas.reduce((sum, p) => sum + p.total, 0)]);
-    const total = linhasPecas.reduce((sum, p) => sum + p.total, 0) + linhasServ.reduce((sum, s) => sum + s.total, 0);
+
+    const composicao = agruparComposicaoOS(linhasPecas, linhasServ);
+    rows.push([]);
+    rows.push(['COMPOSICAO DA O.S. POR PECA E SERVICO VINCULADO']);
+    rows.push(['ITEM / CODIGO','DESCRICAO','QTD/H','UNIT./R$/H','DESC.','TOTAL']);
+    composicao.grupos.forEach(g => {
+      const p = g.peca;
+      rows.push([textoItemPeca(p), p.desc, p.qtd, p.valorUnit, p.descPct, p.total]);
+      g.servicos.forEach(s => rows.push([textoItemServico(s), s.desc, s.tempo, s.valorHora, s.descPct, s.total]));
+    });
+    if (composicao.soltos.length) {
+      rows.push(['SERVICOS GERAIS / SEM PECA VINCULADA']);
+      composicao.soltos.forEach(s => rows.push([textoItemServico(s), s.desc, s.tempo, s.valorHora, s.descPct, s.total]));
+    }
+
+    const brutoPecas = linhasPecas.reduce((sum, p) => sum + n(p.bruto || 0), 0);
+    const liquidoPecas = linhasPecas.reduce((sum, p) => sum + n(p.total || 0), 0);
+    const brutoMO = linhasServ.reduce((sum, s) => sum + n(s.bruto || 0), 0);
+    const liquidoMO = linhasServ.reduce((sum, s) => sum + n(s.total || 0), 0);
+    const horasMO = linhasServ.reduce((sum, s) => sum + n(s.tempo || 0), 0);
+    const total = +(liquidoPecas + liquidoMO).toFixed(2);
+    rows.push([]);
+    rows.push(['KPIs FINAIS DA O.S.']);
+    rows.push(['QTDE / VALOR BRUTO DE PECAS', `${linhasPecas.length} peca(s)`, '', '', '', brutoPecas]);
+    rows.push(['DESCONTO TOTAL EM PECAS', '', '', '', '', +(brutoPecas - liquidoPecas).toFixed(2)]);
+    rows.push(['VALOR LIQUIDO DE PECAS', '', '', '', '', liquidoPecas]);
+    rows.push(['QTDE / VALOR BRUTO DE SERVICOS', `${linhasServ.length} servico(s) · ${horasMO.toFixed(2).replace('.', ',')} h`, '', '', '', brutoMO]);
+    rows.push(['DESCONTO TOTAL EM MAO DE OBRA', '', '', '', '', +(brutoMO - liquidoMO).toFixed(2)]);
+    rows.push(['VALOR LIQUIDO DE MAO DE OBRA', '', '', '', '', liquidoMO]);
+    rows.push(['TOTAL BRUTO DA O.S.', '', '', '', '', +(brutoPecas + brutoMO).toFixed(2)]);
+    rows.push(['DESCONTO TOTAL DA O.S.', '', '', '', '', +((brutoPecas + brutoMO) - total).toFixed(2)]);
+    rows.push(['TOTAL LIQUIDO / CONTRATO', '', '', '', '', total]);
+    rows.push(['TOTAL DE HORAS DE MAO DE OBRA', `${horasMO.toFixed(2).replace('.', ',')} h`, '', '', '', 0]);
+    rows.push(['TOTAL DE ITENS NA O.S.', `${linhasPecas.length} peca(s) + ${linhasServ.length} servico(s)`, '', '', '', total]);
+    if (resumoSecoes.length) {
+      rows.push([]);
+      rows.push(['RESUMO FINAL POR TIPO / SECAO DO SERVICO', '', '', '', 'HORAS', 'VALOR']);
+      resumoSecoes.forEach(([secao, item]) => rows.push([textoResumoSecao(secao, item), '', '', '', item.horas, item.total]));
+    }
     rows.push(['VALOR DO CONTRATO', '', '', '', '', total]);
     rows.push([dataExtenso(dt.cidade || dc.cidade)]);
 
