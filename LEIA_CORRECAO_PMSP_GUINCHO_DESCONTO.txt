@@ -1,0 +1,26 @@
+CORREÇÃO PMSP + GUINCHO — arquivos completos
+
+Aplicar esta pasta no repositório correspondente.
+
+Arquivos incluídos:
+- jarvis.html
+- js/os.js
+- js/exportar-pmsp.js
+- exportar-pmsp.js, se existir no repo
+- service-worker.js
+- js/service-worker.js
+
+O que foi corrigido:
+1. Exportação PMSP XLSX: proteção contra erro "Cannot merge already merged cells".
+2. Guincho/deslocamento: desconto próprio do guincho, separado dos descontos de mão de obra e peças.
+3. Guincho entra no total da OS, PDF e planilha.
+4. Service worker com nova versão de cache para não servir JS antigo.
+
+Fórmula do guincho:
+- Leve: R$ 253,22 + R$ 8,51 por km excedente acima de 15 km.
+- Pesado: R$ 463,86 + R$ 16,66 por km excedente acima de 15 km.
+- Desconto guincho (%): aplicado apenas sobre o subtotal do guincho.
+
+Depois de subir:
+- GitHub Pages: Ctrl+F5.
+- APK: gerar APK novamente e desinstalar o antigo antes de instalar.

@@ -1070,6 +1070,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <strong>R$ <span id="osTotalPecasVal">0,00</span></strong>
         </div>
         <div class="os-total-card">
+          <small>Deslocamento / guincho</small>
+          <strong>R$ <span id="osTotalGuinchoVal">0,00</span></strong>
+        </div>
+        <div class="os-total-card">
           <small>Total geral</small>
           <strong>R$ <span id="osTotalValMirror">0,00</span></strong>
         </div>
@@ -1095,6 +1099,39 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <span style="font-family:var(--fd);font-size:2rem;font-weight:700;color:var(--success);">R$ <span id="osTotalVal">0,00</span></span>
         <input type="hidden" id="osTotalHidden" value="0">
       </div>
+    </div>
+
+
+
+    <!-- ════ DESLOCAMENTO / GUINCHO POR OS ════ -->
+    <div id="blocoGuinchoOS" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.25);border-radius:3px;padding:14px;margin-top:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <div>
+          <div style="font-family:var(--fm);font-size:0.7rem;color:#F59E0B;letter-spacing:1.5px;font-weight:700;">🚚 DESLOCAMENTO / GUINCHO</div>
+          <div style="font-family:var(--fm);font-size:0.6rem;color:var(--muted);margin-top:2px;">Cálculo independente de peças e serviços: saída até 15 km + km adicional, com desconto próprio do guincho. O valor fica salvo congelado na O.S.</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-family:var(--fm);font-size:0.72rem;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="osGuinchoAtivo" onchange="window.calcOSTotal()"> Cobrar nesta O.S.
+        </label>
+      </div>
+      <div class="form-row cols-3">
+        <div class="form-group">
+          <label class="j-label">Tipo de transporte</label>
+          <select class="j-select" id="osGuinchoTipo" onchange="window.atualizarGuinchoCamposPorTipo?.();window.calcOSTotal()">
+            <option value="leve">Leve até 1.500 kg / moto / semirreboque até 750 kg</option>
+            <option value="pesado">Pesado acima de 1.500 kg / van / coletivo / carga / semirreboque acima de 750 kg</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="j-label">KM total rodado</label><input type="text" inputmode="decimal" class="j-input" id="osGuinchoKm" placeholder="Ex: 25" oninput="window.calcOSTotal()"></div>
+        <div class="form-group"><label class="j-label">Franquia inclusa (km)</label><input type="text" inputmode="decimal" class="j-input" id="osGuinchoFranquia" value="15" oninput="window.calcOSTotal()"></div>
+      </div>
+      <div class="form-row cols-4">
+        <div class="form-group"><label class="j-label">Saída guincho (R$)</label><input type="text" inputmode="decimal" class="j-input" id="osGuinchoSaida" value="253,22" oninput="window.calcOSTotal()"></div>
+        <div class="form-group"><label class="j-label">KM adicional (R$)</label><input type="text" inputmode="decimal" class="j-input" id="osGuinchoKmValor" value="8,51" oninput="window.calcOSTotal()"></div>
+        <div class="form-group"><label class="j-label">Desc. guincho (%)</label><input type="text" inputmode="decimal" class="j-input" id="osGuinchoAjuste" placeholder="0" oninput="window.calcOSTotal()" title="Desconto exclusivo do guincho. Não usa o desconto de peças nem de mão de obra."></div>
+        <div class="form-group"><label class="j-label">Total guincho</label><input type="text" class="j-input" id="osGuinchoTotal" value="R$ 0,00" readonly></div>
+      </div>
+      <div class="form-group"><label class="j-label">Observação do deslocamento</label><input type="text" class="j-input" id="osGuinchoObs" placeholder="Ex: remoção ida e volta, endereço de retirada, apoio externo..." oninput="window.calcOSTotal()"></div>
     </div>
 
     <!-- ════ DESCONTO PERSONALIZADO POR OS (sobrescreve padrão do cadastro) ════ -->

@@ -662,6 +662,118 @@ window.enviarWppB2C = function(id) {
 let mediaOSAtual = []; 
 let timelineOSAtual = [];
 
+
+// ═══════════════════════════════════════════════════════════════
+// DESLOCAMENTO / GUINCHO — cálculo congelado por O.S.
+// Referência: saída até 15 km + adicional por km excedente.
+// Leve: saída 253,22 + 8,51/km. Pesado: saída 463,86 + 16,66/km.
+// Desconto do guincho é separado de mão de obra e peças.
+// ═══════════════════════════════════════════════════════════════
+function _numGuinchoOS(value) {
+  return numBR(value || 0);
+}
+function _moedaGuinchoOS(value) {
+  return 'R$ ' + _numGuinchoOS(value).toFixed(2).replace('.', ',');
+}
+function _pctGuinchoOS(value) {
+  const pct = _numGuinchoOS(value || 0);
+  if (!isFinite(pct)) return 0;
+  return Math.max(0, Math.min(100, pct));
+}
+window.atualizarGuinchoCamposPorTipo = function() {
+  const tipo = ($('osGuinchoTipo')?.value || 'leve');
+  const saida = $('osGuinchoSaida');
+  const kmValor = $('osGuinchoKmValor');
+  if (!saida || !kmValor) return;
+  if (tipo === 'pesado') {
+    saida.value = '463,86';
+    kmValor.value = '16,66';
+  } else {
+    saida.value = '253,22';
+    kmValor.value = '8,51';
+  }
+};
+window.calcularDeslocamentoGuinchoOS = function() {
+  const ativo = !!$('osGuinchoAtivo')?.checked;
+  const tipo = $('osGuinchoTipo')?.value || 'leve';
+  const kmTotal = _numGuinchoOS($('osGuinchoKm')?.value || 0);
+  const franquiaKm = _numGuinchoOS($('osGuinchoFranquia')?.value || 15) || 15;
+  const valorSaida = _numGuinchoOS($('osGuinchoSaida')?.value || (tipo === 'pesado' ? 463.86 : 253.22));
+  const valorKmAdicional = _numGuinchoOS($('osGuinchoKmValor')?.value || (tipo === 'pesado' ? 16.66 : 8.51));
+  const descontoPct = _pctGuinchoOS($('osGuinchoDesconto')?.value || $('osGuinchoAjuste')?.value || 0);
+  const kmExcedente = ativo ? Math.max(kmTotal - franquiaKm, 0) : 0;
+  const subtotal = ativo ? +(valorSaida + (kmExcedente * valorKmAdicional)).toFixed(2) : 0;
+  const descontoValor = ativo ? +(subtotal * (descontoPct / 100)).toFixed(2) : 0;
+  const total = ativo ? +Math.max(0, subtotal - descontoValor).toFixed(2) : 0;
+  const obj = {
+    ativo,
+    tipo,
+    tipoLabel: tipo === 'pesado' ? 'Pesado acima de 1.500 kg / van / coletivo / carga / semirreboque acima de 750 kg' : 'Leve até 1.500 kg / moto / semirreboque até 750 kg',
+    kmTotal,
+    franquiaKm,
+    kmExcedente,
+    valorSaida,
+    valorKmAdicional,
+    descontoPct,
+    descPct: descontoPct,
+    ajustePct: descontoPct,
+    subtotal,
+    descontoValor,
+    total,
+    obs: $('osGuinchoObs')?.value?.trim() || ''
+  };
+  if ($('osGuinchoTotal')) $('osGuinchoTotal').value = _moedaGuinchoOS(total);
+  if ($('osTotalGuinchoVal')) $('osTotalGuinchoVal').innerText = total.toFixed(2).replace('.', ',');
+  return obj;
+};
+window.setDeslocamentoGuinchoOS = function(g) {
+  g = g || {};
+  if ($('osGuinchoAtivo')) $('osGuinchoAtivo').checked = !!g.ativo;
+  if ($('osGuinchoTipo')) $('osGuinchoTipo').value = g.tipo || 'leve';
+  if ($('osGuinchoKm')) $('osGuinchoKm').value = g.kmTotal != null ? String(g.kmTotal).replace('.', ',') : '';
+  if ($('osGuinchoFranquia')) $('osGuinchoFranquia').value = g.franquiaKm != null ? String(g.franquiaKm).replace('.', ',') : '15';
+  if ($('osGuinchoSaida')) $('osGuinchoSaida').value = g.valorSaida != null ? Number(g.valorSaida).toFixed(2).replace('.', ',') : (g.tipo === 'pesado' ? '463,86' : '253,22');
+  if ($('osGuinchoKmValor')) $('osGuinchoKmValor').value = g.valorKmAdicional != null ? Number(g.valorKmAdicional).toFixed(2).replace('.', ',') : (g.tipo === 'pesado' ? '16,66' : '8,51');
+  const desc = g.descontoPct ?? g.descPct ?? g.ajustePct ?? 0;
+  if ($('osGuinchoDesconto')) $('osGuinchoDesconto').value = desc != null ? String(desc).replace('.', ',') : '';
+  if ($('osGuinchoAjuste')) $('osGuinchoAjuste').value = desc != null ? String(desc).replace('.', ',') : '';
+  if ($('osGuinchoObs')) $('osGuinchoObs').value = g.obs || '';
+  window.calcularDeslocamentoGuinchoOS?.();
+};
+
+async function salvarBlobArquivoOS(blob, fileName, mimeType) {
+  const capacitor = window.Capacitor;
+  const plugins = capacitor?.Plugins || {};
+  const Filesystem = plugins.Filesystem;
+  const Share = plugins.Share;
+  const isNative = !!(capacitor?.isNativePlatform?.() || capacitor?.getPlatform?.() === 'android' || capacitor?.getPlatform?.() === 'ios');
+  if (isNative && Filesystem) {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result || '').split(',')[1] || '');
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const directory = Filesystem.Directory?.Documents || 'DOCUMENTS';
+    const saved = await Filesystem.writeFile({ path: fileName, data: base64, directory, recursive: true });
+    if (Share && saved?.uri) {
+      try { await Share.share({ title: fileName, text: fileName, url: saved.uri, dialogTitle: 'Compartilhar arquivo' }); } catch(e) {}
+    }
+    return saved;
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  return { uri: url };
+}
+window.salvarBlobArquivoOS = salvarBlobArquivoOS;
+
+
 window.prepOS = function(mode, id = null) {
   ['osId', 'osPlaca', 'osVeiculo', 'osCliente', 'osCelular', 'osCpf', 'osDiagnostico', 'osRelato', 'osDescricao', 'chkObs', 'osKm', 'osData'].forEach(f => { if ($(f)) $(f).value = ''; });
   // Checklist tri-state: limpa valor hidden + botões ativos
@@ -681,10 +793,12 @@ window.prepOS = function(mode, id = null) {
   if ($('osTotalVal')) $('osTotalVal').innerText = '0,00';
   if ($('osTotalServicosVal')) $('osTotalServicosVal').innerText = '0,00';
   if ($('osTotalPecasVal')) $('osTotalPecasVal').innerText = '0,00';
+  if ($('osTotalGuinchoVal')) $('osTotalGuinchoVal').innerText = '0,00';
   if ($('osTotalValMirror')) $('osTotalValMirror').innerText = '0,00';
   if ($('osSecaoKpisOS')) $('osSecaoKpisOS').innerHTML = '';
   if ($('osTotalHidden')) $('osTotalHidden').value = '0';
-  ['osProxRev','osProxKm','osPgtoForma','osPgtoData','osPgtoParcelas','osDescMO','osDescPeca','osEntregueA'].forEach(f => { if ($(f)) $(f).value = ''; });
+  window.setDeslocamentoGuinchoOS?.({ ativo: false, tipo: 'leve', franquiaKm: 15, valorSaida: 253.22, valorKmAdicional: 8.51, descontoPct: 0, kmTotal: 0, obs: '' });
+  ['osProxRev','osProxKm','osPgtoForma','osPgtoData','osPgtoParcelas','osDescMO','osDescPeca','osEntregueA','osGuinchoKm','osGuinchoAjuste','osGuinchoDesconto','osGuinchoObs'].forEach(f => { if ($(f)) $(f).value = ''; });
   if ($('osMediaGrid')) $('osMediaGrid').innerHTML = ''; 
   if ($('osMediaArray')) $('osMediaArray').value = '[]';
   if ($('osTimeline')) $('osTimeline').innerHTML = ''; 
@@ -741,6 +855,7 @@ window.prepOS = function(mode, id = null) {
     // Desconto personalizado desta OS
     if ($('osDescMO')) $('osDescMO').value = o.descMO != null ? (parseFloat(o.descMO)*100).toFixed(1) : '';
     if ($('osDescPeca')) $('osDescPeca').value = o.descPeca != null ? (parseFloat(o.descPeca)*100).toFixed(1) : '';
+    window.setDeslocamentoGuinchoOS?.(o.deslocamentoGuincho || o.guincho || {});
     // Mostra blocos governo se cliente for gov
     const _cli_load = (window.J?.clientes||[]).find(cl=>cl.id===o.clienteId);
     const _ehGov_load = _cli_load?.tipoCliente === 'governo';
@@ -1288,7 +1403,10 @@ window.calcOSTotal = function() {
         totalPecas += vFinal;
     });
 
-    total = +(totalServicos + totalPecas).toFixed(2);
+    const guinchoOS = window.calcularDeslocamentoGuinchoOS?.() || { ativo: false, total: 0 };
+    const totalGuincho = guinchoOS.ativo ? _numGuinchoOS(guinchoOS.total || 0) : 0;
+    total = +(totalServicos + totalPecas + totalGuincho).toFixed(2);
+    if ($('osTotalGuinchoVal')) $('osTotalGuinchoVal').innerText = totalGuincho.toFixed(2).replace('.', ',');
     if ($('osTotalVal')) $('osTotalVal').innerText = total.toFixed(2).replace('.', ',');
     if ($('osTotalServicosVal')) $('osTotalServicosVal').innerText = totalServicos.toFixed(2).replace('.', ',');
     if ($('osTotalPecasVal')) $('osTotalPecasVal').innerText = totalPecas.toFixed(2).replace('.', ',');
@@ -1301,6 +1419,7 @@ window.calcOSTotal = function() {
       liquidoServicos: totalServicos,
       brutoPecas,
       liquidoPecas: totalPecas,
+      totalGuincho: (typeof totalGuincho !== 'undefined' ? totalGuincho : 0),
       total
     });
     window.renderResumoSecoesOS(resumoSecoesOS);
@@ -1453,6 +1572,9 @@ window.salvarOS = async function() {
   const _descPecaval = $v('osDescPeca');
   if (_descMOval !== '' && _descMOval != null) payload.descMO = taxaDescontoOS(_descMOval);
   if (_descPecaval !== '' && _descPecaval != null) payload.descPeca = taxaDescontoOS(_descPecaval);
+  const guinchoPayload = window.calcularDeslocamentoGuinchoOS?.() || { ativo: false, total: 0 };
+  payload.deslocamentoGuincho = guinchoPayload;
+  payload.totalGuincho = guinchoPayload.ativo ? _numGuinchoOS(guinchoPayload.total || 0) : 0;
   // Peças realmente instaladas (somente dono)
   const _pecasReais = [];
   document.querySelectorAll('#containerPecasReais > div').forEach(row => {
@@ -2398,8 +2520,36 @@ window.gerarPDFOS = async function() {
     y = doc.lastAutoTable.finalY + 6;
   }
 
+
+
+  const guinchoPdf = window.calcularDeslocamentoGuinchoOS?.() || osAtual.deslocamentoGuincho || { ativo: false, total: 0 };
+  const totalGuinchoPdf = guinchoPdf?.ativo ? _numGuinchoOS(guinchoPdf.total || 0) : 0;
+  if (guinchoPdf?.ativo && totalGuinchoPdf > 0) {
+    linhaTitulo('DESLOCAMENTO / GUINCHO');
+    doc.autoTable({
+      startY: y,
+      head: [['Tipo', 'KM total', 'Franquia', 'KM excedente', 'Saída', 'KM adicional', 'Desc.', 'Total']],
+      body: [[
+        guinchoPdf.tipoLabel || (guinchoPdf.tipo === 'pesado' ? 'Pesado' : 'Leve'),
+        String(guinchoPdf.kmTotal || 0).replace('.', ',') + ' km',
+        String(guinchoPdf.franquiaKm || 15).replace('.', ',') + ' km',
+        String(guinchoPdf.kmExcedente || 0).replace('.', ',') + ' km',
+        moedaPdf(guinchoPdf.valorSaida || 0),
+        moedaPdf(guinchoPdf.valorKmAdicional || 0),
+        String(guinchoPdf.descontoPct ?? guinchoPdf.descPct ?? guinchoPdf.ajustePct ?? 0).replace('.', ',') + '%',
+        moedaPdf(totalGuinchoPdf)
+      ]],
+      theme: 'grid',
+      margin: { left: margem, right: margem },
+      styles: { fontSize: 6.8, cellPadding: 1.3, lineColor: [190, 198, 210], lineWidth: 0.12, overflow: 'linebreak' },
+      headStyles: { fillColor: [245, 158, 11], textColor: [20, 20, 20], fontStyle: 'bold' }
+    });
+    y = doc.lastAutoTable.finalY + 6;
+    if (guinchoPdf.obs) blocoTexto('OBSERVACAO DO DESLOCAMENTO', guinchoPdf.obs);
+  }
+
   if (y > ph - 34) { doc.addPage(); y = 12; }
-  const totalGeral = +(totalServicos + totalPecas).toFixed(2);
+  const totalGeral = +(totalServicos + totalPecas + totalGuinchoPdf).toFixed(2);
   doc.autoTable({
     startY: y,
     theme: 'plain',
@@ -2408,11 +2558,12 @@ window.gerarPDFOS = async function() {
     body: [
       ['TOTAL DE PECAS', moedaPdf(totalPecas)],
       ['TOTAL DE MAO DE OBRA', moedaPdf(totalServicos)],
+      ['DESLOCAMENTO / GUINCHO', moedaPdf(totalGuinchoPdf)],
       ['VALOR DO CONTRATO', moedaPdf(totalGeral)]
     ],
     columnStyles: { 0: { fontStyle: 'bold', halign: 'right' }, 1: { fontStyle: 'bold', halign: 'right' } },
     didParseCell: data => {
-      if (data.row.index === 2) {
+      if (data.row.index === 3) {
         data.cell.styles.fillColor = [205, 200, 160];
         data.cell.styles.fontSize = 12;
       }
@@ -2463,7 +2614,15 @@ window.gerarPDFOS = async function() {
   doc.text(texto(clientePdf.nome || 'CLIENTE'), pw - margem - 35, y + 5, { align: 'center' });
   doc.text('ASSINATURA DO CLIENTE', pw - margem - 35, y + 9, { align: 'center' });
 
-  doc.save(`Laudo_${veiculoPdf.placa || 'OS'}_${Date.now()}.pdf`);
+  const nomePDF = `Laudo_${veiculoPdf.placa || 'OS'}_${Date.now()}.pdf`;
+  try {
+    const blobPDF = doc.output('blob');
+    if (typeof window.salvarBlobArquivoOS === 'function') await window.salvarBlobArquivoOS(blobPDF, nomePDF, 'application/pdf');
+    else doc.save(nomePDF);
+  } catch(e) {
+    console.warn('[PDF OS] fallback download comum:', e);
+    doc.save(nomePDF);
+  }
   window.toast('PDF GERADO', 'ok');
 };
 

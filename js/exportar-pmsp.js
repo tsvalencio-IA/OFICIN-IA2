@@ -14,6 +14,38 @@
   const U = () => window.JarvisOSUtils || window.JOS || {};
   const n = value => U().parseNumberBR ? U().parseNumberBR(value) : (parseFloat(String(value || 0).replace(',', '.')) || 0);
 
+  function guinchoOSExportar(os) {
+    const g = os?.deslocamentoGuincho || os?.guincho || {};
+    const kmTotal = n(g.kmTotal || 0);
+    const franquiaKm = n(g.franquiaKm || 15) || 15;
+    const valorSaida = n(g.valorSaida || (g.tipo === 'pesado' ? 463.86 : 253.22));
+    const valorKmAdicional = n(g.valorKmAdicional || (g.tipo === 'pesado' ? 16.66 : 8.51));
+    const kmExcedente = n(g.kmExcedente || Math.max(kmTotal - franquiaKm, 0));
+    const subtotal = n(g.subtotal || (valorSaida + (kmExcedente * valorKmAdicional)));
+    const descontoPct = Math.max(0, Math.min(100, n(g.descontoPct ?? g.descPct ?? g.ajustePct ?? 0)));
+    const descontoValor = n(g.descontoValor || +(subtotal * descontoPct / 100).toFixed(2));
+    const total = n(g.total || Math.max(0, subtotal - descontoValor));
+    const ativo = !!g.ativo && total > 0;
+    return {
+      ativo,
+      tipo: g.tipo || 'leve',
+      tipoLabel: g.tipoLabel || (g.tipo === 'pesado' ? 'Pesado acima de 1.500 kg / van / coletivo / carga / semirreboque acima de 750 kg' : 'Leve até 1.500 kg / moto / semirreboque até 750 kg'),
+      kmTotal,
+      franquiaKm,
+      kmExcedente,
+      valorSaida,
+      valorKmAdicional,
+      descontoPct,
+      descPct: descontoPct,
+      ajustePct: descontoPct,
+      subtotal,
+      descontoValor,
+      total,
+      obs: limparTexto(g.obs || '')
+    };
+  }
+
+
   function moedaNumber(value) {
     return +n(value).toFixed(2);
   }
@@ -299,6 +331,73 @@
     try { ws.unMergeCells(range); } catch(e) {}
   }
 
+  function colToNumber(col) {
+    return String(col || '').toUpperCase().split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  }
+
+  function decodeAddress(addr) {
+    const m = String(addr || '').match(/^([A-Z]+)(\d+)$/i);
+    if (!m) return null;
+    return { col: colToNumber(m[1]), row: parseInt(m[2], 10) };
+  }
+
+  function decodeRange(range) {
+    const parts = String(range || '').split(':');
+    const a = decodeAddress(parts[0]);
+    const b = decodeAddress(parts[1] || parts[0]);
+    if (!a || !b) return null;
+    return { top: Math.min(a.row, b.row), bottom: Math.max(a.row, b.row), left: Math.min(a.col, b.col), right: Math.max(a.col, b.col) };
+  }
+
+  function rangesOverlap(a, b) {
+    return !!a && !!b && !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom);
+  }
+
+  function mergeRanges(ws) {
+    const out = [];
+    const merges = ws?._merges || ws?.model?.merges || {};
+    if (Array.isArray(merges)) {
+      merges.forEach(range => {
+        const decoded = decodeRange(range);
+        if (decoded) out.push({ range, decoded });
+      });
+      return out;
+    }
+    Object.keys(merges || {}).forEach(key => {
+      const item = merges[key];
+      let range = item?.range || item?.model?.range || key;
+      if (item?.model && item.model.top != null) {
+        out.push({ range, decoded: { top: item.model.top, bottom: item.model.bottom, left: item.model.left, right: item.model.right } });
+        return;
+      }
+      const decoded = decodeRange(range);
+      if (decoded) out.push({ range, decoded });
+    });
+    return out;
+  }
+
+  function safeUnmergeOverlaps(ws, range) {
+    const wanted = decodeRange(range);
+    if (!wanted) return;
+    mergeRanges(ws).forEach(item => {
+      if (rangesOverlap(item.decoded, wanted)) {
+        try { ws.unMergeCells(item.range); } catch(e) {}
+      }
+    });
+    safeUnmerge(ws, range);
+  }
+
+  function safeMerge(ws, range) {
+    try {
+      safeUnmergeOverlaps(ws, range);
+      ws.mergeCells(range);
+      return true;
+    } catch (e) {
+      console.warn('[PMSP XLSX] Merge ignorado para nao travar exportacao:', range, e?.message || e);
+      return false;
+    }
+  }
+
   function limparRangeResumo(ws, row) {
     ['A:H','A:D','A:B','B:D','B:F','B:H','C:D','D:H','E:F','E:H','F:H','G:H'].forEach(range => safeUnmerge(ws, `${range.split(':')[0]}${row}:${range.split(':')[1]}${row}`));
     ['A','B','C','D','E','F','G','H'].forEach(col => setCell(ws, col + row, ''));
@@ -381,7 +480,7 @@
     const op = opts || {};
     limparRangeResumo(ws, row);
     safeUnmerge(ws, `B${row}:F${row}`);
-    ws.mergeCells(`B${row}:F${row}`);
+    safeMerge(ws, `B${row}:F${row}`);
     setCell(ws, 'B' + row, label);
     ws.getCell('B' + row).alignment = { horizontal: op.contrato ? 'center' : 'left', vertical: 'middle', wrapText: true, shrinkToFit: true };
     if (op.blankValue) {
@@ -408,7 +507,7 @@
   function linhaTotalPecas(ws, row, total) {
     limparRangeResumo(ws, row);
     safeUnmerge(ws, `B${row}:F${row}`);
-    ws.mergeCells(`B${row}:F${row}`);
+    safeMerge(ws, `B${row}:F${row}`);
     setCell(ws, 'B' + row, 'TOTAL DE PECAS');
     setCell(ws, 'G' + row, 'R$');
     ws.getCell('G' + row).alignment = { horizontal: 'center', vertical: 'middle' };
@@ -439,7 +538,7 @@
     });
 
     safeUnmerge(ws, `B${titleRow}:H${titleRow}`);
-    ws.mergeCells(`B${titleRow}:H${titleRow}`);
+    safeMerge(ws, `B${titleRow}:H${titleRow}`);
     setCell(ws, 'B' + titleRow, 'RESUMO POR SECAO DE MAO DE OBRA DA O.S.');
     ws.getCell('B' + titleRow).alignment = { horizontal: 'center', vertical: 'middle', shrinkToFit: true };
     ws.getCell('B' + titleRow).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF000000' } };
@@ -447,7 +546,7 @@
     ws.getRow(titleRow).height = 18;
 
     safeUnmerge(ws, `B${headRow}:F${headRow}`);
-    ws.mergeCells(`B${headRow}:F${headRow}`);
+    safeMerge(ws, `B${headRow}:F${headRow}`);
     setCell(ws, 'B' + headRow, 'TIPO / SEÇÃO DO SERVIÇO');
     setCell(ws, 'G' + headRow, 'HORAS');
     setCell(ws, 'H' + headRow, 'VALOR');
@@ -461,7 +560,7 @@
     resumoSecoes.forEach(([secao, item], idx) => {
       const row = primeiroItem + idx;
       safeUnmerge(ws, `B${row}:F${row}`);
-      ws.mergeCells(`B${row}:F${row}`);
+      safeMerge(ws, `B${row}:F${row}`);
       setCell(ws, 'B' + row, textoResumoSecao(secao, item));
       setNumberCell(ws, 'G' + row, item.horas, '0.00');
       setMoneyCell(ws, 'H' + row, item.total);
@@ -541,7 +640,7 @@
   function tituloBlocoOS(ws, row, titulo) {
     limparRangeResumo(ws, row);
     safeUnmerge(ws, `B${row}:H${row}`);
-    ws.mergeCells(`B${row}:H${row}`);
+    safeMerge(ws, `B${row}:H${row}`);
     setCell(ws, 'B' + row, titulo);
     const cell = ws.getCell('B' + row);
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
@@ -616,7 +715,7 @@
     if (soltos.length) {
       limparRangeResumo(ws, row);
       safeUnmerge(ws, `B${row}:H${row}`);
-      ws.mergeCells(`B${row}:H${row}`);
+      safeMerge(ws, `B${row}:H${row}`);
       setCell(ws, 'B' + row, 'SERVIÇOS GERAIS / SEM PEÇA VINCULADA');
       ws.getCell('B' + row).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
       bordarLinhaOS(ws, row, 'grupo');
@@ -645,7 +744,7 @@
   function linhaKPIFinal(ws, row, label, aux, valor, destaque) {
     limparRangeResumo(ws, row);
     safeUnmerge(ws, `B${row}:F${row}`);
-    ws.mergeCells(`B${row}:F${row}`);
+    safeMerge(ws, `B${row}:F${row}`);
     setCell(ws, 'B' + row, label);
     setCell(ws, 'G' + row, aux || '');
     setMoneyCell(ws, 'H' + row, valor);
@@ -759,7 +858,28 @@
       };
     });
 
-    return { tenant, linhasServ, linhasPecas, descMO, descPeca };
+
+    const guincho = guinchoOSExportar(os);
+    if (guincho.ativo) {
+      linhasServ.push({
+        codigo: 'GUINCHO',
+        sistema: 'DESLOCAMENTO / GUINCHO',
+        tipoVeiculo: guincho.tipoLabel,
+        desc: `Deslocamento/guincho — ${guincho.kmTotal.toFixed(2).replace('.', ',')} km total; franquia ${guincho.franquiaKm.toFixed(2).replace('.', ',')} km; excedente ${guincho.kmExcedente.toFixed(2).replace('.', ',')} km; desconto guincho ${guincho.descontoPct.toFixed(1).replace('.', ',')}%${guincho.obs ? ' — ' + guincho.obs : ''}`,
+        tempo: 0,
+        valorHora: 0,
+        bruto: guincho.subtotal,
+        descPct: guincho.descontoPct / 100,
+        total: guincho.total,
+        relacionadoCilia: false,
+        ciliaPieceIndex: '',
+        pecaCodigo: '',
+        pecaDesc: '',
+        guincho: true
+      });
+    }
+
+    return { tenant, linhasServ, linhasPecas, descMO, descPeca, guincho };
   }
 
   async function exportarComExcelJS(os, cli, veiculo) {
