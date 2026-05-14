@@ -205,9 +205,9 @@ body{background:var(--bg0);color:var(--text);font-family:var(--ff);min-height:10
     <div class="sub">Órgão Público · Acesso Restrito</div>
     <div class="err-box" id="loginErr"></div>
     <label>Login do Órgão</label>
-    <input type="text" id="loginInput" placeholder="Ex: pmsp.30bpm" autocomplete="username">
+    <input type="email" id="loginInput" name="username" inputmode="email" placeholder="Ex: pmsp.30bpm" autocomplete="username email" autocapitalize="none" autocorrect="off" spellcheck="false">
     <label>PIN de Acesso</label>
-    <input type="password" id="pinInput" placeholder="••••••" autocomplete="current-password">
+    <input type="password" id="pinInput" name="current-password" placeholder="••••••" autocomplete="current-password">
     <button class="btn-login" id="btnLogin" onclick="doLogin()">ACESSAR PORTAL</button>
   </div>
 </div>
@@ -333,6 +333,7 @@ body{background:var(--bg0);color:var(--text);font-family:var(--ff);min-height:10
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/config.js"></script>
+<script src="js/links-publicos.js"></script>
 <script src="js/os-utils.js"></script>
 <script>
 'use strict';
@@ -346,7 +347,7 @@ const fmt = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
 const _tenantReady = _tenantSlug ? _prepararTenantPortal(_tenantSlug) : Promise.resolve();
 
 function moeda(v){ return fmt.format(parseFloat(v||0)); }
-function fmtDt(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('pt-BR'); }catch{ return '—'; } }
+function fmtDt(d){ if(!d) return '—'; const s=String(d); if(/^\d{4}-\d{2}-\d{2}$/.test(s.slice(0,10))){const [a,m,dd]=s.slice(0,10).split('-'); return `${dd}/${m}/${a}`;} try{ return new Date(d).toLocaleDateString('pt-BR'); }catch{ return '—'; } }
 function esc(s){ return String(s==null?'':s).replace(/[<>&"']/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c])); }
 function _pick(...values){
   for(const value of values){
@@ -380,8 +381,14 @@ function _finOS(os){
     return !f.osId && placa && desc.includes(placa);
   });
 }
+function _guinchoFinanceiroOS(os){
+  const g = os?.deslocamentoGuincho || os?.guincho || {};
+  const ativo = g.ativo === true || g.cobrar === true || nBR(os?.totalGuincho || g.total || 0) > 0;
+  return ativo ? nBR(os?.totalGuincho || g.total || 0) : 0;
+}
 function _totalAprovadoOS(os){
-  if(os.totalAprovado!=null) return nBR(os.totalAprovado);
+  if(os.totalAprovadoComGuincho!=null) return nBR(os.totalAprovadoComGuincho);
+  if(os.totalAprovado!=null) return +(nBR(os.totalAprovado) + _guinchoFinanceiroOS(os)).toFixed(2);
   return nBR(os.total||0);
 }
 function _resumoFinanceiroOS(os){
@@ -517,6 +524,12 @@ function toast(msg,type='ok'){
 document.getElementById('pinInput').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
 document.getElementById('loginInput').addEventListener('keydown',e=>{ if(e.key==='Enter') document.getElementById('pinInput').focus(); });
 
+
+(function carregarCredenciaisClienteOficial(){
+  try{const s=JSON.parse(localStorage.getItem('thiaguinho_cliente_oficial_login')||'null');if(s){const l=document.getElementById('loginInput');const p=document.getElementById('pinInput');if(l&&s.login)l.value=s.login;if(p&&s.pin)p.value=s.pin;}}catch(e){}
+})();
+function salvarCredenciaisClienteOficial(login,pin){try{localStorage.setItem('thiaguinho_cliente_oficial_login',JSON.stringify({login,pin,salvoEm:new Date().toISOString()}));}catch(e){}}
+
 async function doLogin(){
   await _tenantReady;
   const err=document.getElementById('loginErr');
@@ -529,7 +542,7 @@ async function doLogin(){
   try{
     const snap=await db.collection('clientes').where('login','==',login).get();
     if(snap.empty){ throw new Error('Login ou PIN incorretos.'); }
-    const matched=snap.docs.find(d=>d.data().pin===pin);
+    const matched=snap.docs.find(d=>{const x=d.data(); return x.pin===pin || x.senha===pin || x.password===pin;});
     if(!matched){ throw new Error('Login ou PIN incorretos.'); }
     const data=matched.data();
     if(data.tipoCliente!=='governo'){
@@ -539,6 +552,7 @@ async function doLogin(){
     TID=data.tenantId;
     sessionStorage.setItem('govCli',JSON.stringify(CLI));
     sessionStorage.setItem('govTid',TID);
+    salvarCredenciaisClienteOficial(login, pin);
     _carregarOficina().then(inicializar);
   }catch(e){
     err.textContent='⚠ '+e.message; err.style.display='block';
@@ -810,6 +824,7 @@ function _buildOSCard(os){
     <div class="os-header">
       <div>
         <div class="placa-box"><div class="placa-top">BRASIL</div><div class="placa-txt">${esc(placa)}</div></div>
+        ${prefixoVeic?`<div style="margin-top:7px;display:inline-block;border:1px solid rgba(255,184,0,.35);background:rgba(255,184,0,.08);border-radius:var(--r);padding:4px 9px;font-family:var(--mono);font-size:.68rem;color:var(--warn);font-weight:800;letter-spacing:1px">PREFIXO ${esc(prefixoVeic)}</div>`:''}
         <div style="margin-top:8px;font-size:.72rem;color:var(--muted)">${esc(modeloVeic)}</div>
         <div style="font-family:var(--mono);font-size:.6rem;color:var(--disabled);margin-top:2px">OS #${os.id.slice(-6).toUpperCase()}</div>
       </div>
@@ -1072,5 +1087,7 @@ function sair(){
 })();
 </script>
 <script src="js/theme.js"></script>
+<script src="js/hardening-comercial.js"></script>
+<script src="js/uix-theme-fix.js"></script>
 </body>
 </html>

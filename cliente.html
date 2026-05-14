@@ -189,15 +189,15 @@ body { overflow-y: auto; background: #060A14; color: #E8F4FF; font-family: 'Exo 
   <div class="portal-login">
     <div class="portal-login-card">
       <div style="text-align:center;margin-bottom:32px">
-        <div style="width:64px;height:64px;border-radius:var(--r-xl);background:linear-gradient(135deg, var(--brand-dim), transparent);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-size:2rem;font-weight:800;color:var(--brand);margin:0 auto 16px;box-shadow: 0 0 20px rgba(0,212,255,0.1);" id="portalLogoMark">J</div>
+        <div style="width:64px;height:64px;border-radius:var(--r-xl);background:linear-gradient(135deg, var(--brand-dim), transparent);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--ff-display);font-size:2rem;font-weight:800;color:var(--brand);margin:0 auto 16px;box-shadow: 0 0 20px rgba(0,212,255,0.1);" id="portalLogoMark">T</div>
         <div style="font-family:var(--ff-display);font-size:1.5rem;font-weight:700;letter-spacing:1px;" id="portalOficinaName">Portal do Cliente</div>
         <div style="font-family:var(--ff-mono);font-size:0.65rem;color:var(--brand);margin-top:6px;letter-spacing:2px;text-transform:uppercase;">Acesso Digital Exclusivo</div>
       </div>
       <div id="portalLoginErr" style="display:none; background: var(--danger-dim); color: var(--danger); padding: 14px; border-radius: var(--r-md); font-size: 0.85rem; margin-bottom: 20px; text-align: center; border: 1px solid rgba(255,59,59,0.3);"></div>
       <label class="label">Placa do Veículo ou Usuário</label>
-      <input class="input" id="pLogin" placeholder="Ex: ABC-1234" autocomplete="off" autocorrect="off" autocapitalize="off">
+      <input class="input" id="pLogin" name="username" type="text" inputmode="email" placeholder="Ex: ABC-1234" autocomplete="username email" autocorrect="off" autocapitalize="none" spellcheck="false">
       <label class="label">PIN de Segurança</label>
-      <input class="input" id="pPin" type="password" placeholder="••••••" style="margin-bottom: 24px;">
+      <input class="input" id="pPin" name="current-password" type="password" placeholder="••••••" autocomplete="current-password" style="margin-bottom: 24px;">
       <button class="btn btn-brand" onclick="portalLogin()" id="btnLoginBtn">ACESSAR MEU PAINEL</button>
       <div style="text-align:center;margin-top:24px;font-size:0.75rem;color:var(--text-muted);font-family:var(--ff-mono);">Credenciais fornecidas pelo atendimento via WhatsApp.</div>
     </div>
@@ -359,6 +359,7 @@ body { overflow-y: auto; background: #060A14; color: #E8F4FF; font-family: 'Exo 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/config.js?v=99"></script>
+<script src="js/links-publicos.js"></script>
 <script src="js/os-utils.js"></script>
 <script>
 // ============================================================
@@ -408,6 +409,26 @@ async function _carregarBrandTenant(tenantId) {
 
 document.getElementById('pPin').addEventListener('keydown', e => { if (e.key === 'Enter') portalLogin(); });
 document.getElementById('pLogin').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('pPin').focus(); });
+
+
+
+// Lembrança local das credenciais do portal do cliente (não interfere no login original)
+(function carregarCredenciaisPortalCliente(){
+  try{
+    const salvo = JSON.parse(localStorage.getItem('thiaguinho_portal_cliente_login') || 'null');
+    if(!salvo) return;
+    const loginEl = document.getElementById('pLogin');
+    const pinEl = document.getElementById('pPin');
+    if(loginEl && salvo.login) loginEl.value = salvo.login;
+    if(pinEl && salvo.pin) pinEl.value = salvo.pin;
+  }catch(e){ console.warn('[Portal Cliente] não foi possível carregar credenciais locais', e); }
+})();
+function salvarCredenciaisPortalCliente(login, pin){
+  try{
+    if(!login || !pin) return;
+    localStorage.setItem('thiaguinho_portal_cliente_login', JSON.stringify({ login, pin, salvoEm: new Date().toISOString() }));
+  }catch(e){ console.warn('[Portal Cliente] não foi possível salvar credenciais locais', e); }
+}
 
 async function portalLogin() {
   await _tenantReady;
@@ -461,6 +482,7 @@ async function portalLogin() {
     if (!P.oficina && P.tenantId) { const ofSnap = await db.collection('oficinas').doc(P.tenantId).get(); if (ofSnap.exists) { P.oficina = ofSnap.data(); await _carregarBrandTenant(P.tenantId); } }
 
     document.getElementById('portalClienteNome').textContent = P.cliente?.nome || 'Olá, Cliente';
+    salvarCredenciaisPortalCliente(rawLogin, pin);
     document.getElementById('loginView').style.display  = 'none'; document.getElementById('portalView').style.display = 'block';
     _iniciarPortalListeners();
   } catch(e) {
@@ -616,11 +638,16 @@ function _renderPortalOS(osList) {
     
     const orcAlerta = isOrcamento ? `<div class="alerta-orcamento"><div style="font-family:var(--ff-display);font-size:1.2rem;font-weight:700;color:var(--warn);margin-bottom:6px">Orçamento Disponível</div>${resumoValoresHTML}<div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-success" style="flex:1;" onclick="_aprovarOrcamento('${os.id}')">✓ APROVAR</button><button class="btn btn-outline" style="flex:1;" onclick="_negociarOrcamento('${placaFormatada}')">💬 NEGOCIAR</button></div></div>` : '';
 
+    const timelinePublica = (os.timeline || []).filter(t => {
+      const acao = String(t.acao || '').toLowerCase();
+      if (/interna|execu[cç][aã]o|pe[cç]as reais|financeiro|custo|margem|comiss|auditoria|estoque|nf\b|fornecedor/.test(acao)) return false;
+      return /status|abriu|or[cç]amento|aprov|recus|pronto|entreg|cliente|ve[ií]culo/.test(acao);
+    });
     const timelineHtml = `
       <div class="timeline-box">
         <div class="timeline-box-title">⏱️ Histórico de Atualizações</div>
         <div class="timeline">
-          ${(os.timeline && os.timeline.length > 0) ? [...os.timeline].reverse().map(tl => `
+          ${(timelinePublica.length > 0) ? [...timelinePublica].reverse().map(tl => `
             <div class="tl-item">
               <div class="tl-meta">
                 <span class="tl-date">${new Date(tl.dt).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
@@ -655,7 +682,7 @@ function _renderPortalOS(osList) {
             });
         }
         if (pecas.length > 0) {
-            financeiroDetalhe += `<div style="font-family:var(--ff-mono); font-size:0.65rem; color:var(--success); margin-top:12px; margin-bottom:6px; letter-spacing:1px;">PEÇAS APLICADAS</div>`;
+            financeiroDetalhe += `<div style="font-family:var(--ff-mono); font-size:0.65rem; color:var(--success); margin-top:12px; margin-bottom:6px; letter-spacing:1px;">PEÇAS DO ORÇAMENTO</div>`;
             pecas.forEach(p => {
                 financeiroDetalhe += `<div class="detalhe-row"><span>${p.codigo ? '<code style="font-size:.68rem;color:var(--brand)">'+(UOS.escapeHtml ? UOS.escapeHtml(p.codigo) : p.codigo)+'</code> ' : ''}${UOS.escapeHtml ? UOS.escapeHtml(p.desc) : p.desc}${badgeAprovacao(p)}<br><small style="color:var(--text-muted);font-family:var(--ff-mono);">${p.qtd}x ${formatter.format(p.valorUnit || 0)}</small></span><span class="detalhe-valor">${formatter.format(p.valorFinal || 0)}</span></div>`;
             });
@@ -1565,5 +1592,7 @@ async function _obdSalvarFirebase(dtcs, scan) {
 }
 </script>
 <script src="js/theme.js"></script>
+<script src="js/hardening-comercial.js"></script>
+<script src="js/uix-theme-fix.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>JARVIS ERP — Painel da Equipe</title>
+<title>thIAguinho SaaS — Painel da Equipe</title>
 <!-- ═══ PWA ═══ -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#00D4FF">
@@ -22,6 +22,7 @@ if ('serviceWorker' in navigator) {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/os-utils.js"></script>
+<script src="js/links-publicos.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -248,15 +249,32 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .chat-msg audio{max-width:100%;margin-top:4px;}
 .chat-foot{padding:10px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;}
 
+body.equipe-operacional .mec-financeiro-only{display:none!important;}
+.status-equipe-dados{display:none;margin:0 0 10px 0;padding:9px 11px;border:1px solid var(--border);border-radius:3px;background:var(--surf2);font-family:var(--fm);font-size:0.68rem;color:var(--muted2);letter-spacing:.4px;}
+.status-equipe-dados.warn{display:block;border-color:rgba(255,184,0,.35);color:var(--warn);background:rgba(255,184,0,.07);}
+.status-equipe-dados.err{display:block;border-color:rgba(255,59,59,.35);color:var(--danger);background:rgba(255,59,59,.07);}
 @media(max-width:600px){
-  .mec-kpis{grid-template-columns:1fr;}
+  .page{padding-top:58px;}
+  .content{padding:10px;}
+  .tab-bar{top:58px;overflow-x:auto;padding:0 10px;gap:4px;}
+  .tab{flex:0 0 auto;padding:10px 9px;font-size:0.58rem;letter-spacing:.9px;white-space:nowrap;}
+  .mec-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px;}
+  .mec-kpi{padding:10px;min-height:78px;}
+  .mec-kpi-label{font-size:0.50rem;letter-spacing:1px;line-height:1.2;}
+  .mec-kpi-val{font-size:1.45rem;line-height:1;}
   .form-row.c2,.form-row.c3{grid-template-columns:1fr;}
   .kanban-wrap{flex-direction:column;}
   .kanban-wrap{display:flex;overflow-x:hidden;}
   .k-col{min-width:100%;width:100%;max-height:none;}
   .k-col-body{max-height:none;min-height:86px;}
+  .k-col-head{padding:9px 10px;}
+  .k-card{padding:9px;}
   .topbar{padding:10px 14px;}
   .topbar-info{display:none;}
+  .logo{font-size:1rem;letter-spacing:3px;}
+  .topbar-right{gap:6px;}
+  .user-pill{padding:5px 7px;}
+  .btn-sair{padding:6px 8px;font-size:.55rem;letter-spacing:1px;}
   .content{padding:14px;}
   .tab-bar{padding:0 10px;overflow-x:auto;}
   .tab{padding:10px 14px;font-size:0.62rem;white-space:nowrap;}
@@ -289,8 +307,58 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .modal-ia-foot{padding:14px 20px;border-top:1px solid rgba(167,139,250,0.15);display:flex;justify-content:flex-end;gap:8px;flex-shrink:0;background:rgba(0,0,0,0.2);}
 @media(max-width:600px){.overlay-ia{padding:0;align-items:flex-end;}.modal-ia{max-width:100%;border-radius:16px 16px 0 0;max-height:88vh;}.modal-ia-body{max-height:52vh;}}
 </style>
+<style id="equipe-layout-final">
+/* Defesa final do painel da equipe: impede que resets ou cache antigo deixem abas e cards em linha. */
+body.equipe-page{display:block!important;min-height:100vh!important;overflow-x:hidden!important;background:var(--bg)!important;color:var(--text)!important;}
+body.equipe-page .topbar{position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:100!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;min-height:58px!important;background:var(--surf)!important;border-bottom:1px solid var(--border)!important;}
+body.equipe-page .topbar-left,body.equipe-page .topbar-right{display:flex!important;align-items:center!important;gap:12px!important;min-width:0!important;}
+body.equipe-page .page{display:block!important;position:relative!important;z-index:1!important;width:100%!important;min-height:100vh!important;padding-top:64px!important;}
+body.equipe-page .tab-bar{display:flex!important;align-items:stretch!important;width:100%!important;background:var(--surf)!important;border-bottom:1px solid var(--border)!important;position:sticky!important;top:64px!important;z-index:50!important;overflow-x:auto!important;white-space:nowrap!important;}
+body.equipe-page .tab{display:flex!important;align-items:center!important;gap:8px!important;flex:0 0 auto!important;cursor:pointer!important;}
+body.equipe-page .content{display:block!important;width:100%!important;padding:20px!important;}
+body.equipe-page .section{display:none!important;width:100%!important;min-width:0!important;}
+body.equipe-page .section.active{display:block!important;}
+body.equipe-page .mec-kpis{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))!important;gap:12px!important;width:100%!important;margin-bottom:20px!important;}
+body.equipe-page .mec-kpi{display:block!important;min-width:0!important;background:var(--surf)!important;border:1px solid var(--border)!important;border-radius:3px!important;padding:16px!important;}
+body.equipe-page.equipe-operacional .mec-financeiro-only,
+body.equipe-page.equipe-operacional #kpiComissao,
+body.equipe-page.equipe-operacional #modalExtratoFunc{display:none!important;visibility:hidden!important;}
+body.equipe-page .kanban-wrap{display:grid!important;grid-template-columns:repeat(6,minmax(150px,1fr))!important;gap:10px!important;width:100%!important;align-items:flex-start!important;overflow-x:hidden!important;}
+body.equipe-page .k-col{display:flex!important;flex-direction:column!important;min-width:0!important;width:100%!important;min-height:126px!important;background:var(--surf2)!important;border:1px solid var(--border)!important;border-radius:3px!important;overflow:hidden!important;}
+body.equipe-page .k-col-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;flex:0 0 auto!important;}
+body.equipe-page .k-col-body{display:flex!important;flex-direction:column!important;gap:7px!important;min-height:76px!important;overflow-y:auto!important;}
+body.equipe-page .k-card{display:block!important;width:100%!important;min-width:0!important;background:var(--surf3)!important;border:1px solid var(--border)!important;border-left-width:3px!important;border-radius:3px!important;}
+body.equipe-page .j-card,body.equipe-page .chat-box,body.equipe-page .modal,body.equipe-page .overlay-ia,body.equipe-page .modal-ia{box-sizing:border-box!important;}
+body.equipe-page .chat-box{display:flex!important;flex-direction:column!important;width:100%!important;min-height:320px!important;}
+body.equipe-page .chat-msgs{display:flex!important;flex-direction:column!important;gap:8px!important;}
+body.equipe-page .chat-foot,body.equipe-page .ia-foot-wrap{display:flex!important;align-items:center!important;gap:8px!important;}
+body.equipe-page #t-ia>div{display:flex!important;flex-direction:column!important;background:var(--surf)!important;border-radius:6px!important;border:1px solid rgba(167,139,250,0.25)!important;}
+body.equipe-page .overlay{display:none!important;}
+body.equipe-page .overlay.open{display:flex!important;}
+@media(max-width:1100px){
+  body.equipe-page .kanban-wrap{display:grid!important;grid-template-columns:repeat(3,minmax(180px,1fr))!important;}
+}
+@media(max-width:760px){
+  body.equipe-page .topbar{min-height:58px!important;padding:10px 12px!important;}
+  body.equipe-page .logo{font-size:1rem!important;letter-spacing:3px!important;}
+  body.equipe-page .topbar-info{display:none!important;}
+  body.equipe-page .user-pill{max-width:156px!important;overflow:hidden!important;}
+  body.equipe-page .user-pill .un{max-width:96px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+  body.equipe-page .page{padding-top:58px!important;}
+  body.equipe-page .tab-bar{top:58px!important;padding:0 8px!important;}
+  body.equipe-page .tab{padding:10px 9px!important;font-size:.58rem!important;letter-spacing:.8px!important;}
+  body.equipe-page .content{padding:12px!important;}
+  body.equipe-page .mec-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
+  body.equipe-page .mec-kpi{padding:10px!important;min-height:78px!important;}
+  body.equipe-page .kanban-wrap{display:flex!important;flex-direction:column!important;gap:10px!important;}
+  body.equipe-page .k-col{width:100%!important;min-width:100%!important;max-height:none!important;}
+  body.equipe-page .k-col-body{max-height:none!important;}
+  body.equipe-page .chat-foot,body.equipe-page .ia-foot-wrap{flex-wrap:nowrap!important;}
+  body.equipe-page .chat-foot .j-input,body.equipe-page .ia-foot-wrap .j-input{min-width:0!important;font-size:16px!important;}
+}
+</style>
 </head>
-<body>
+<body class="equipe-page">
 <div id="toastBox"></div>
 <button class="fab-nova-os" onclick="prepOS('add');abrirModal('modalOS')" title="Nova O.S." aria-label="Nova Ordem de Serviço">＋</button>
 
@@ -330,7 +398,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <div class="mec-kpi-label">EM EXECUÇÃO AGORA</div>
           <div class="mec-kpi-val" id="kEmExec">0</div>
         </div>
-<div class="mec-kpi c3" id="kpiComissao" style="display:none; border-bottom: 2px solid var(--success); cursor:pointer; transition: background 0.2s;" onclick="abrirModal('modalExtratoFunc')" onmouseover="this.style.background='rgba(0, 255, 136, 0.05)'" onmouseout="this.style.background=''">
+<div class="mec-kpi c3 mec-financeiro-only" id="kpiComissao" style="display:none; border-bottom: 2px solid var(--success); cursor:pointer; transition: background 0.2s;" onclick="abrirModal('modalExtratoFunc')" onmouseover="this.style.background='rgba(0, 255, 136, 0.05)'" onmouseout="this.style.background=''">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
               <div class="mec-kpi-label" style="color:var(--success)">COMISSÕES A RECEBER</div>
@@ -347,6 +415,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         </div>
         <button class="btn-primary" onclick="prepOS('add');abrirModal('modalOS')">+ NOVA O.S.</button>
       </div>
+      <div id="statusEquipeDados" class="status-equipe-dados"></div>
 
       <div class="kanban-wrap">
         <div class="k-col" style="border-top:2px solid var(--muted2)"><div class="k-col-head"><span class="k-col-label" style="color:var(--muted2)">TRIAGEM</span><span class="k-col-count" id="cnt-Aguardando">0</span></div><div class="k-col-body" id="kb-Aguardando"></div></div>
@@ -698,15 +767,53 @@ const db = fbApp.firestore();
 // STATE
 let dbOS=[], dbClientes=[], dbVeiculos=[], dbEstoque=[], dbMsgs=[];
 
+function roleEquipeAtual(){
+  return String(J.role || '').toLowerCase();
+}
+function podeVerFinanceiroEquipe(){
+  return ['admin','gestor','gerente','superadmin','financeiro'].includes(roleEquipeAtual());
+}
+function aplicarModoOperacionalEquipe(){
+  const operacional = !podeVerFinanceiroEquipe();
+  document.body?.classList.toggle('equipe-operacional', operacional);
+  const cardComissao = document.getElementById('kpiComissao');
+  if (cardComissao && operacional) cardComissao.style.display = 'none';
+}
+
 // INIT UI
-$('tbTenantNome').innerText = J.tnome;
-$('topNome').innerText = J.nome;
-$('topAv').innerText = J.nome.charAt(0).toUpperCase();
+$('tbTenantNome').innerText = J.tnome || 'Oficina';
+$('topNome').innerText = J.nome || 'Equipe';
+$('topAv').innerText = String(J.nome || 'E').charAt(0).toUpperCase();
 if($('topCargo')) {
   let roleDisplay = J.role || 'MECÂNICO';
   if (roleDisplay.toLowerCase() === 'equipe') roleDisplay = 'MECÂNICO';
   $('topCargo').innerText = roleDisplay.toUpperCase();
 }
+aplicarModoOperacionalEquipe();
+
+function repararLayoutEquipe(){
+  try{
+    document.body?.classList.add('equipe-page');
+    const force = (sel, props) => {
+      document.querySelectorAll(sel).forEach(el => {
+        Object.entries(props).forEach(([k,v]) => el.style.setProperty(k, v, 'important'));
+      });
+    };
+    force('.topbar', {display:'flex', position:'fixed', top:'0', left:'0', right:'0', 'z-index':'100'});
+    force('.page', {display:'block', position:'relative', width:'100%', 'min-height':'100vh'});
+    force('.tab-bar', {display:'flex', 'overflow-x':'auto', 'white-space':'nowrap'});
+    force('.content', {display:'block', width:'100%'});
+    force('.section', {width:'100%'});
+    document.querySelectorAll('.section').forEach(s => {
+      s.style.setProperty('display', s.classList.contains('active') ? 'block' : 'none', 'important');
+    });
+    force('.mec-kpis', {display:'grid'});
+    force('.kanban-wrap', {display: window.innerWidth <= 760 ? 'flex' : 'grid'});
+    if(window.innerWidth <= 760) force('.kanban-wrap', {'flex-direction':'column'});
+  }catch(e){ console.warn('[Equipe] Falha ao reparar layout', e); }
+}
+repararLayoutEquipe();
+window.addEventListener('resize', repararLayoutEquipe);
 // TOAST
 function toast(msg,type='ok'){
   const el=document.createElement('div');
@@ -731,6 +838,7 @@ function irTab(id,el){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   $(id)?.classList.add('active'); el?.classList.add('active');
+  repararLayoutEquipe();
 }
 
 const dtBr = iso=>iso?new Date(iso).toLocaleDateString('pt-BR'):'-';
@@ -1388,6 +1496,24 @@ async function enviarFotosBatch(){
 // ============================================================
 // LISTENERS
 // ============================================================
+function statusEquipeDados(msg, tipo='warn'){
+  const el = document.getElementById('statusEquipeDados');
+  if (!el) return;
+  el.className = 'status-equipe-dados ' + (tipo || 'warn');
+  el.textContent = msg || '';
+  if (!msg) {
+    el.className = 'status-equipe-dados';
+    el.textContent = '';
+  }
+}
+function renderKanbanFalhaEquipe(msg){
+  ['Aguardando','Orcamento','Aprovado','Andamento','Pronto','Entregue'].forEach(s => {
+    const cEl = $('cnt-' + s);
+    const kEl = $('kb-' + s);
+    if (cEl) cEl.innerText = '0';
+    if (kEl) kEl.innerHTML = `<div style="text-align:center;padding:18px;color:var(--danger);font-family:var(--fm);font-size:0.68rem;line-height:1.45;">${msg}</div>`;
+  });
+}
 document.addEventListener('DOMContentLoaded',()=>{
   // Avisar sobre STT se não suportado
   if (!STT_SUPPORT) {
@@ -1397,9 +1523,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     });
   }
 
+  statusEquipeDados('Sincronizando pátio da equipe...', 'warn');
   db.collection('ordens_servico').where('tenantId','==',J.tid).onSnapshot(snap=>{
     dbOS=snap.docs.map(d=>({id:d.id,...d.data()}));
+    statusEquipeDados('');
     renderKanban(); renderKPIs();
+  }, err => {
+    console.error('[Equipe] Falha ao carregar O.S.', err);
+    statusEquipeDados('Não foi possível carregar as O.S. da equipe. Verifique permissão do Firestore, tenant da sessão e conexão.', 'err');
+    renderKanbanFalhaEquipe('Falha ao carregar O.S.');
   });
   db.collection('clientes').where('tenantId','==',J.tid).onSnapshot(snap=>{
     dbClientes=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -1418,15 +1550,15 @@ document.addEventListener('DOMContentLoaded',()=>{
     renderChat();
     const nLidas=dbMsgs.filter(m=>m.sender==='admin'&&!m.lidaEquipe&&m.para===J.fid).length;
     const badge=$('chatTabBadge');
-    if(nLidas>0){badge.classList.remove('d-none');badge.innerText=nLidas;}
-    else badge.classList.add('d-none');
+    if(badge && nLidas>0){badge.classList.remove('d-none');badge.innerText=nLidas;}
+    else if(badge) badge.classList.add('d-none');
   });
 
 // VERIFICA PERMISSÃO DE COMISSÃO DO GESTOR E MONTA EXTRATO
   db.collection('oficinas').doc(J.tid).onSnapshot(doc => {
     if (doc.exists) {
       const ofi = doc.data();
-      const podeVer = ofi.modulos && ofi.modulos.comissoes === true;
+      const podeVer = ofi.modulos && ofi.modulos.comissoes === true && podeVerFinanceiroEquipe();
       const cardComissao = document.getElementById('kpiComissao');
       
       if (cardComissao) cardComissao.style.display = podeVer ? 'block' : 'none';
@@ -1452,7 +1584,7 @@ document.addEventListener('DOMContentLoaded',()=>{
               
               // 2. Monta as linhas da tabela de Extrato
               const dataStr = fin.venc ? new Date(fin.venc).toLocaleDateString('pt-BR') : '-';
-              const valorStr = 'R$ ' + (fin.valor || 0).toFixed(2).replace('.', ',');
+              const valorStr = 'OCULTO';
               
               let tipoBadge = '';
               let valorStyle = '';
@@ -1485,7 +1617,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             
             // Injeta o valor no Card
             const valEl = document.getElementById('kMinhaComissao');
-            if (valEl) valEl.innerText = 'R$ ' + totalPendente.toFixed(2).replace('.', ',');
+            if (valEl) valEl.innerText = 'OCULTO';
             
             // Injeta as linhas no Modal
             const tbExtrato = document.getElementById('tbExtratoFunc');
@@ -1562,12 +1694,10 @@ function renderKanban(){
     kEl.innerHTML=cols[s].sort((a,b)=>new Date(b.os.updatedAt||0)-new Date(a.os.updatedAt||0)).map(({os,v,c})=>{
       const qm = STATUS_NEXT[s];
       const qmBtn = qm ? `<button class="k-move-btn" onclick="quickMoveOS('${os.id}','${qm.next}',event)">${qm.label}</button>` : '';
-      const UOS = window.JarvisOSUtils || window.JOS || {};
-      const resumo = UOS.getBudgetSummary ? UOS.getBudgetSummary(os, c, J.financeiro) : {orcamento:os.total||0, aprovado:os.totalAprovado||0, faturado:0};
       const valores = `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:8px 0;">
-        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">ORC.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--warn);">${moeda(resumo.orcamento||0)}</b></div>
-        <div style="background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.12);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">APROV.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--cyan);">${resumo.aprovado?moeda(resumo.aprovado):'-'}</b></div>
-        <div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.12);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">FAT.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--success);">${resumo.faturado?moeda(resumo.faturado):'-'}</b></div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">ORÇ.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--warn);">SEM VALOR</b></div>
+        <div style="background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.12);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">APROV.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--cyan);">STATUS</b></div>
+        <div style="background:rgba(0,255,136,.05);border:1px solid rgba(0,255,136,.12);padding:5px;border-radius:3px;"><small style="display:block;font-family:var(--fm);font-size:.47rem;color:var(--muted);">FIN.</small><b style="font-family:var(--fm);font-size:.58rem;color:var(--success);">OCULTO</b></div>
       </div>`;
       return `
       <div class="k-card" style="border-left-color:${cor}" onclick="prepOS('edit','${os.id}');abrirModal('modalOS')">
@@ -1655,6 +1785,72 @@ function prepOS(mode,id=null){
   }
 }
 
+
+function escExecEquipe(v){
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function statusOptionsExecEquipe(tipo, atual) {
+  const t = String(tipo || '').toLowerCase();
+  const opts = t.includes('peca') || t.includes('peça') ? [
+    ['pendente', 'Pendente'],
+    ['em_execucao', 'Em execução'],
+    ['executado', 'Executado'],
+    ['executado_obs', 'Executado com observação'],
+    ['nao_executado', 'Não executado'],
+    ['cancelado', 'Cancelado']
+  ] : [
+    ['pendente', 'Pendente'],
+    ['em_execucao', 'Em execução'],
+    ['executado', 'Executado'],
+    ['executado_obs', 'Executado com observação'],
+    ['nao_executado', 'Não executado'],
+    ['cancelado', 'Cancelado']
+  ];
+  return opts.map(([value, label]) => `<option value="${value}" ${String(atual || 'pendente') === value ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+async function salvarExecucaoAprovadosEquipe(osId) {
+  if (!osId) { toast('Salve a O.S. antes de marcar execução.', 'warn'); return; }
+  const osAtual = dbOS.find(x => x.id === osId) || {};
+  const execucaoItens = { ...(osAtual.execucaoItens || {}) };
+  const rows = document.querySelectorAll('#resumoAprovacaoEquipe .execucao-aprovado-row');
+  if (!rows.length) { toast('Nenhum item aprovado para atualizar.', 'warn'); return; }
+  for (const row of rows) {
+    const st = row.querySelector('.exec-status')?.value || 'pendente';
+    const obs = (row.querySelector('.exec-obs')?.value || '').trim();
+    if (['executado_obs','nao_executado','cancelado'].includes(st) && !obs) {
+      toast('⚠ Informe observação para itens executados com observação, não executados ou cancelados.', 'warn');
+      return;
+    }
+  }
+  rows.forEach(row => {
+    const key = row.dataset.key;
+    if (!key) return;
+    execucaoItens[key] = {
+      key,
+      tipo: row.dataset.tipo || '',
+      status: row.querySelector('.exec-status')?.value || 'pendente',
+      obs: row.querySelector('.exec-obs')?.value || '',
+      atualizadoEm: new Date().toISOString(),
+      atualizadoPor: J.nome || 'Equipe',
+      atualizadoPorTipo: J.role || 'equipe'
+    };
+  });
+  const timeline = Array.isArray(osAtual.timeline) ? osAtual.timeline.slice() : [];
+  timeline.push({
+    dt: new Date().toISOString(),
+    user: J.nome || 'Equipe',
+    acao: `Equipe atualizou execução interna de ${rows.length} item(ns) aprovado(s).`
+  });
+  await db.collection('ordens_servico').doc(osId).update({
+    execucaoItens,
+    timeline,
+    updatedAt: new Date().toISOString()
+  });
+  toast('✓ Execução dos itens aprovados salva.', 'ok');
+}
+
 function aplicarMarcadoresAprovacaoEquipe(os) {
   const U = window.JOS || window.JarvisOSUtils || {};
   document.getElementById('resumoAprovacaoEquipe')?.remove();
@@ -1676,15 +1872,33 @@ function aplicarMarcadoresAprovacaoEquipe(os) {
   const pendentes = itens.filter(it => !keys.has(it.key));
   const moeda = U.moeda || (v => 'R$ ' + parseBR(v).toFixed(2).replace('.', ','));
   const total = os?.totalAprovado != null ? parseBR(os.totalAprovado) : aprovados.reduce((sum, it) => sum + parseBR(it.valorFinal), 0);
+  const exec = os?.execucaoItens || {};
+  const execHtml = aprovados.length ? `
+    <div style="margin-top:14px;border-top:1px solid rgba(255,255,255,.12);padding-top:12px;">
+      <div style="font-family:var(--fm);font-size:.72rem;color:var(--cyan);font-weight:800;letter-spacing:1px;margin-bottom:8px;">EXECUÇÃO DOS ITENS APROVADOS</div>
+      <div style="font-family:var(--fm);font-size:.60rem;color:var(--muted);margin-bottom:8px;">Mecânicos e usuários da equipe podem marcar o que foi executado, trocado, não executado ou não encontrado. O cliente não visualiza essas marcações internas.</div>
+      <div style="display:grid;gap:7px;">
+        ${aprovados.map(it => {
+          const e = exec[it.key] || {};
+          return `<div class="execucao-aprovado-row" data-key="${escExecEquipe(it.key)}" data-tipo="${escExecEquipe(it.tipo)}" style="display:grid;grid-template-columns:minmax(220px,1fr) 190px minmax(200px,1fr);gap:7px;align-items:center;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.10);border-radius:3px;padding:8px;">
+            <div style="font-size:.75rem;color:var(--text);"><b>${escExecEquipe(it.labelTipo || it.tipo)}</b> ${it.codigo ? '[' + escExecEquipe(it.codigo) + '] ' : ''}${escExecEquipe(it.desc || '-')}${it.tempo ? `<br><small style="color:var(--muted);">TMO ${String(it.tempo).replace('.', ',')}h</small>` : ''}</div>
+            <select class="j-select exec-status" style="font-size:.72rem;">${statusOptionsExecEquipe(it.tipo, e.status || 'pendente')}</select>
+            <input class="j-input exec-obs" value="${escExecEquipe(e.obs || '')}" placeholder="Observação interna: peça não encontrada, aguardando, executado...">
+          </div>`;
+        }).join('')}
+      </div>
+      <button type="button" class="btn-primary" style="margin-top:10px;" onclick="salvarExecucaoAprovadosEquipe('${escExecEquipe(os.id || '')}')">SALVAR EXECUÇÃO DA EQUIPE</button>
+    </div>` : '';
   const box = document.createElement('div');
   box.id = 'resumoAprovacaoEquipe';
   box.style.cssText = 'background:rgba(0,255,136,.07);border:1px solid rgba(0,255,136,.24);border-radius:4px;padding:12px;margin-bottom:14px;';
   box.innerHTML = `
-    <div style="font-family:var(--fd);font-weight:800;color:var(--success);letter-spacing:1px;margin-bottom:8px;">ORCAMENTO APROVADO - ${aprovados.length}/${itens.length} ITEM(NS) - ${moeda(total)}</div>
+    <div style="font-family:var(--fd);font-weight:800;color:var(--success);letter-spacing:1px;margin-bottom:8px;">ORCAMENTO APROVADO - ${aprovados.length}/${itens.length} ITEM(NS) — VALORES OCULTOS PARA EQUIPE</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;">
       ${aprovados.map(it => `<div style="border:1px solid rgba(0,255,136,.2);background:rgba(0,0,0,.14);border-radius:3px;padding:8px;font-size:.75rem;"><b style="color:var(--success);">APROVADO</b><br>${U.escapeHtml?.(it.desc || '-') || it.desc || '-'}<br><small>${it.codigo ? '[' + (U.escapeHtml?.(it.codigo) || it.codigo) + '] ' : ''}${it.tempo ? 'TMO ' + String(it.tempo).replace('.', ',') + 'h' : ''}</small></div>`).join('')}
       ${pendentes.map(it => `<div style="border:1px solid rgba(255,184,0,.24);background:rgba(0,0,0,.1);border-radius:3px;padding:8px;font-size:.75rem;opacity:.75;"><b style="color:var(--warn);">NAO APROVADO</b><br>${U.escapeHtml?.(it.desc || '-') || it.desc || '-'}<br><small>Mantido para historico.</small></div>`).join('')}
-    </div>`;
+    </div>
+    ${execHtml}`;
   const alvo = document.getElementById('containerServicos')?.parentElement;
   if (alvo) alvo.insertAdjacentElement('beforebegin', box);
 }
@@ -1902,6 +2116,20 @@ async function salvarOS(){
 
   const osAntigaAprovacao = id ? (dbOS.find(x => x.id === id) || {}) : {};
   const UOS = window.JOS || window.JarvisOSUtils || {};
+  if (id && UOS.hasApproval?.(osAntigaAprovacao)) {
+    // O.S. aprovada: equipe/mecânico não pode remover/editar o orçamento aprovado/reprovado.
+    // Mantém orçamento, aprovação, total e histórico financeiro como estavam; equipe só muda status operacional,
+    // diagnóstico/checklist/mídia/timeline e execução interna dos itens aprovados.
+    p.pecas = osAntigaAprovacao.pecas || [];
+    p.servicos = osAntigaAprovacao.servicos || [];
+    p.total = osAntigaAprovacao.total || p.total;
+    p.maoObra = osAntigaAprovacao.maoObra || p.maoObra;
+    p.aprovacao = osAntigaAprovacao.aprovacao;
+    p.itensAprovados = osAntigaAprovacao.itensAprovados || [];
+    p.totalAprovado = osAntigaAprovacao.totalAprovado || 0;
+    p.aprovacaoAtiva = osAntigaAprovacao.aprovacaoAtiva !== false;
+    if (osAntigaAprovacao.execucaoItens) p.execucaoItens = osAntigaAprovacao.execucaoItens;
+  }
   if (p.status === 'Aprovado' && !(UOS.hasApproval?.(osAntigaAprovacao))) {
     const aprovacao = await UOS.openApprovalModal?.({ id: id || 'nova-os', ...osAntigaAprovacao, ...p }, {
       clientes: dbClientes,
@@ -1999,6 +2227,7 @@ function renderTimeline(){
 // ============================================================
 function renderChat(){
   const msgs=$('chatMsgs');
+  if(!msgs) return;
   if(!dbMsgs.length){msgs.innerHTML='<div style="text-align:center;color:var(--muted);font-family:var(--fm);font-size:0.72rem;padding:30px;">Sem mensagens ainda</div>';return;}
   msgs.innerHTML=dbMsgs.map(m=>{
     if(m.sender==='admin'&&!m.lidaEquipe&&m.para===J.fid) db.collection('chat_equipe').doc(m.id).update({lidaEquipe:true}).catch(()=>{});
@@ -2209,6 +2438,9 @@ function aplicarSugestaoIA() {
   salvarOS(); 
 }
 </script>
+<script src="js/final-1010-regras-os.js"></script>
 <script src="js/theme.js"></script>
+<script src="js/hardening-comercial.js"></script>
+<script src="js/uix-theme-fix.js"></script>
 </body>
 </html>
