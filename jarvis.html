@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta charset="UTF-8">
+<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>t.h.I.A.g.u.i.n.h.o. — Painel de Controle</title>
 <!-- ═══ PWA ═══ -->
@@ -21,12 +21,15 @@ if ('serviceWorker' in navigator) {
 </script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
+<script src="js/brasil-cadastros.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -137,6 +140,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .j-card-title{font-family:var(--fd);font-size:1rem;font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:8px;}
 .j-card-title svg{width:16px;height:16px;fill:var(--cyan);}
 .j-card-body{padding:18px; overflow-x: auto;}
+.j-card.j-minimized .j-card-body{display:none!important;}
+.j-collapse-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.j-collapse-toggle{min-width:36px;height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;}
+.j-collapsible.minimized .j-collapsible-body{display:none!important;}
+.j-collapsible-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
 
 .kanban-wrap{display:grid;grid-template-columns:repeat(7,minmax(132px,1fr));gap:10px;overflow-x:visible;padding-bottom:8px;align-items:flex-start;}
 .k-col{background:var(--surf2);border:1px solid var(--border);border-radius:3px;min-width:0;width:auto;display:flex;flex-direction:column;max-height:calc(100vh - 220px);}
@@ -747,10 +755,13 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
             <option value="">Todos</option><option value="carro">🚗 Carros</option><option value="moto">🏍️ Motos</option><option value="bicicleta">🚲 Bicicletas</option>
           </select>
         </div>
-        <button class="btn-primary" onclick="abrirModal('modalOS');window.prepOS('add')">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
-          NOVA O.S.
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-outline" onclick="ir('dashboard');setTimeout(()=>document.getElementById('dashHistBuscaPlaca')?.focus(),120)">RELATÓRIOS / HISTÓRICO</button>
+          <button class="btn-primary" onclick="abrirModal('modalOS');window.prepOS('add')">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+            NOVA O.S.
+          </button>
+        </div>
       </div>
       
 <div class="kanban-wrap" id="kanbanBoard">
@@ -760,7 +771,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div class="k-col" data-status="Aprovado"><div class="k-col-head"><span class="k-col-label">APROVADO</span><span class="k-col-count" id="cnt-Aprovado">0</span></div><div class="k-col-body" id="kb-Aprovado"></div></div>
         <div class="k-col" data-status="Andamento"><div class="k-col-head"><span class="k-col-label">EM SERVIÇO</span><span class="k-col-count" id="cnt-Andamento">0</span></div><div class="k-col-body" id="kb-Andamento"></div></div>
         <div class="k-col" data-status="Pronto"><div class="k-col-head"><span class="k-col-label">PRONTO/CAIXA</span><span class="k-col-count" id="cnt-Pronto">0</span></div><div class="k-col-body" id="kb-Pronto"></div></div>
-        <div class="k-col" data-status="Entregue"><div class="k-col-head"><span class="k-col-label">ENTREGUES</span><span class="k-col-count" id="cnt-Entregue">0</span></div><div class="k-col-body" id="kb-Entregue"></div></div>
+        <div class="k-col" data-status="Entregue"><div class="k-col-head"><span class="k-col-label">ENTREGUES</span><span class="k-col-count" id="cnt-Entregue">0</span></div><div style="padding:6px 6px 0;"><input class="j-input" id="buscaEntreguesKanban" placeholder="Buscar entregues por placa, prefixo ou cliente" oninput="window.renderKanban && window.renderKanban()" style="height:34px;font-size:.68rem;"></div><div class="k-col-body" id="kb-Entregue"></div></div>
       </div>
     </section>
 
@@ -774,6 +785,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <div class="j-card-body" style="padding:0;">
             <table class="j-table">
               <thead><tr><th>Nome</th><th>WhatsApp</th><th>Veículos</th><th>Ações</th></tr></thead>
+              <tbody id="tbClientesBusca"><tr><td colspan="4" style="padding:12px;border-bottom:1px solid var(--border);"><input class="j-input" id="buscaClientesCadastro" placeholder="Pesquisar cliente por nome, documento, WhatsApp, login, PIN, placa ou veículo..." oninput="window.renderClientes&&window.renderClientes()"></td></tr></tbody>
               <tbody id="tbClientes"></tbody>
             </table>
           </div>
@@ -786,6 +798,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <div class="j-card-body" style="padding:0;">
             <table class="j-table">
               <thead><tr><th>Placa</th><th>Tipo</th><th>Modelo</th><th>Dono</th><th>KM</th><th>Ações</th></tr></thead>
+              <tbody id="tbVeiculosBusca"><tr><td colspan="6" style="padding:12px;border-bottom:1px solid var(--border);"><input class="j-input" id="buscaVeiculosCadastro" placeholder="Pesquisar veículo por placa, modelo, marca, dono, prefixo, chassi ou KM..." oninput="window.renderVeiculos&&window.renderVeiculos()"></td></tr></tbody>
               <tbody id="tbVeiculos"></tbody>
             </table>
           </div>
@@ -798,20 +811,22 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div class="j-card">
           <div class="j-card-header">
             <div class="j-card-title">INVENTÁRIO DE PEÇAS</div>
-            <div style="display:flex;gap:8px;">
+            <div class="j-collapse-tools">
               <button class="btn-success" onclick="abrirModal('modalNF');window.prepNF()">+ ENTRADA NF</button>
               <button class="btn-primary" onclick="abrirModal('modalPeca');prepPeca('add')">+ NOVA PEÇA</button>
+              <button type="button" class="btn-ghost j-collapse-toggle" onclick="window.toggleJarvisCollapse(this)" title="Minimizar ou expandir inventário">−</button>
             </div>
           </div>
           <div class="j-card-body" style="padding:0;">
             <table class="j-table">
               <thead><tr><th>Ref / Código</th><th>Descrição</th><th>Custo</th><th>Venda</th><th>Qtd</th><th>Mín</th><th>Status</th><th>Ações</th></tr></thead>
+              <tbody id="tbEstoqueBusca"><tr><td colspan="8" style="padding:12px;border-bottom:1px solid var(--border);"><input class="j-input" id="buscaEstoquePecas" placeholder="Pesquisar peça por código, descrição, marca, fornecedor ou NF..." oninput="window._estoqueBuscaPecas=this.value;window.renderEstoque&&window.renderEstoque()"></td></tr></tbody>
               <tbody id="tbEstoque"></tbody>
             </table>
           </div>
         </div>
         <div class="j-card">
-          <div class="j-card-header"><div class="j-card-title">FORNECEDORES</div><button class="btn-primary" onclick="abrirModal('modalFornec')">+ NOVO</button></div>
+          <div class="j-card-header"><div class="j-card-title">FORNECEDORES</div><div class="j-collapse-tools"><button class="btn-primary" onclick="abrirModal('modalFornec')">+ NOVO</button><button type="button" class="btn-ghost j-collapse-toggle" onclick="window.toggleJarvisCollapse(this)" title="Minimizar ou expandir fornecedores">−</button></div></div>
           <div class="j-card-body" style="padding:0;"><table class="j-table"><thead><tr><th>Razão Social</th><th>Segmento</th><th>Ações</th></tr></thead><tbody id="tbFornec"></tbody></table></div>
         </div>
       </div>
@@ -869,7 +884,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <div class="j-card-title">FLUXO DE CAIXA E TÍTULOS</div>
           <div style="display:flex;gap:8px;align-items:center;">
             <select class="j-select" style="width:120px" id="filtroFinTipo" onchange="window.renderFinanceiro()"><option value="">Todos</option><option value="Entrada">Receitas</option><option value="Saída">Despesas</option></select>
-            <select class="j-select" style="width:130px" id="filtroFinStatus" onchange="window.renderFinanceiro()"><option value="">Todos</option><option value="Pago">Liquidado</option><option value="Pendente">Pendente</option></select>
+            <select class="j-select" style="width:170px" id="filtroFinStatus" onchange="window.renderFinanceiro()"><option value="">Todos ativos</option><option value="Pago">Liquidado</option><option value="Pendente">Pendente</option><option value="Cancelado">Cancelados / Reemitidos</option></select>
             <input type="month" class="j-input" style="width:150px" id="filtroFinMes" onchange="window.renderFinanceiro()">
             <button class="btn-primary" onclick="abrirModal('modalFin');window.prepFin()">+ LANÇAMENTO</button>
           </div>
@@ -1070,6 +1085,8 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       FICHA TÉCNICA O.S.
     </div>
     <div style="display:flex;align-items:center;gap:12px;">
+      <button type="button" class="btn-ghost" onclick="window.scrollOSModal&&window.scrollOSModal('top')" style="padding:6px 10px;font-size:.66rem;">↑ TOPO</button>
+      <button type="button" class="btn-ghost" onclick="window.scrollOSModal&&window.scrollOSModal('bottom')" style="padding:6px 10px;font-size:.66rem;">↓ FIM</button>
       <span class="pill pill-cyan" id="osIdBadge" style="font-size:0.7rem;letter-spacing:2px;">NOVA</span>
       <button class="modal-close" onclick="fecharModal('modalOS')">✕</button>
     </div>
@@ -1330,18 +1347,27 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
             <option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option>
             <option value="Débito">Cartão Débito</option><option value="Crédito à Vista">Crédito à Vista</option>
             <option value="Crédito Parcelado">Crédito Parcelado</option><option value="Boleto">Boleto (Pendente)</option>
+            <option value="Recebimento Combinado">Recebimento Combinado</option>
           </select>
         </div>
         <div class="form-group"><label class="j-label">Data do Pagamento</label><input type="date" class="j-input" id="osPgtoData"></div>
         <div class="form-group" id="divParcelasOS" style="display:none;"><label class="j-label">Parcelas</label>
-          <select class="j-select" id="osPgtoParcelas"><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option><option value="10">10x</option><option value="12">12x</option></select>
+          <select class="j-select" id="osPgtoParcelas"><option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option><option value="10">10x</option><option value="12">12x</option></select>
         </div>
+      </div>
+      <div id="osPgtoCombinadoBox" style="display:none;border:1px solid rgba(0,212,255,0.18);background:rgba(0,212,255,0.04);border-radius:3px;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <div style="font-family:var(--fm);font-size:0.68rem;color:var(--cyan);letter-spacing:1px;font-weight:700;">RECEBIMENTO COMBINADO</div>
+          <button type="button" class="btn-ghost" onclick="window.adicionarPagamentoCombinadoOS()">+ ADICIONAR FORMA</button>
+        </div>
+        <div id="osPgtoCombinadoRows" style="display:flex;flex-direction:column;gap:8px;"></div>
+        <div style="font-family:var(--fm);font-size:0.64rem;color:var(--muted);margin-top:8px;">A soma das formas precisa bater com o total financeiro da O.S. Ex.: R$ 200,00 em dinheiro + restante no cartao.</div>
       </div>
       <div class="form-row cols-2">
         <div class="form-group"><label class="j-label">Próxima Revisão — Data</label><input type="date" class="j-input" id="osProxRev"></div>
         <div class="form-group"><label class="j-label">Próxima Revisão — KM</label><input type="number" class="j-input" id="osProxKm" placeholder="KM para retornar"></div>
       </div>
-      <button id="btnAvisarProntoOS" type="button" class="btn-primary" style="display:none;background:#25D366;color:#fff;margin-top:6px;" onclick="window.dispararAvisoEntregaAutomatico($v('osId'),'Pronto')">AVISAR CLIENTE: VEÍCULO PRONTO</button>
+      <button id="btnAvisarProntoOS" type="button" class="btn-primary" style="display:none;background:#25D366;color:#fff;margin-top:6px;" onclick="window.dispararAvisoEntregaAutomatico($v('osId'),$v('osStatus'))">AVISAR CLIENTE: VEÍCULO PRONTO</button>
     </div>
   </div>
 
@@ -1350,8 +1376,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div style="font-family:var(--fd);font-weight:700;margin-bottom:12px;color:var(--cyan);">GALERIA DE PROVAS (CLOUDINARY)</div>
       <!-- CORREÇÃO #4: Input múltiplo + captura de câmera traseira no mobile -->
       <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <input type="file" class="j-input" id="osFileInput" accept="image/*,video/*" multiple capture="environment" style="flex:1;min-width:0;" onchange="window.previewOsMediaBatch(this)">
-        <button class="btn-primary" onclick="window.uploadOsMediaBatch()" id="btnUploadMedia" type="button">ENVIAR TODAS</button>
+        <input type="file" class="j-input" id="osFileInput" accept="image/*,video/*" multiple style="display:none;" onchange="window.previewOsMediaBatch(this)">
+        <button class="btn-ghost" onclick="window.abrirCameraOS()" type="button">BATER FOTO</button>
+        <button class="btn-ghost" onclick="window.abrirGaleriaOS()" type="button">GALERIA / ARQUIVOS</button>
+        <button class="btn-primary" onclick="window.uploadOsMediaBatch()" id="btnUploadMedia" type="button">ENVIAR FILA</button>
       </div>
       <!-- Preview local das fotos selecionadas ANTES do upload em lote -->
       <div id="osMediaPreviewLocal" class="os-batch-preview" style="display:none;">
@@ -1474,8 +1502,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
   </div>
 
   <div class="modal-foot">
+    <button class="btn-ghost" id="btnVisualizarPDFOS" style="display:none;" onclick="window.visualizarOrcamentoOS&&window.visualizarOrcamentoOS()">👁 VISUALIZAR ORÇAMENTO</button>
     <button class="btn-ghost" id="btnGerarPDFOS" style="display:none;" onclick="window.gerarPDFOS()">📄 EXPORTAR LAUDO PDF</button>
     <button class="btn-ghost" id="btnExportarPMSP" style="display:none;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.4);color:#A78BFA;" onclick="window.exportarOrcamentoPMSP()">🛡 EXPORTAR ORÇAMENTO PMSP (XLSX)</button>
+    <button class="btn-ghost" id="btnExportarPMSPItens" style="display:none;background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.36);color:#7DD3FC;" onclick="window.exportarOrcamentoPMSPItens()">📋 EXPORTAR ITENS AGRUPADOS (XLSX)</button>
     <button class="btn-ghost" id="btnExcluirOS" style="display:none;background:transparent;border:1px solid var(--danger);color:var(--danger);" onclick="window._excluirOSDoModal()">🗑 EXCLUIR O.S.</button>
     <button class="btn-ghost" onclick="fecharModal('modalOS')">CANCELAR</button>
     <button class="btn-outline" id="btnSalvarContinuarOS" style="border-color:rgba(0,255,136,.45);color:var(--success);" onclick="window.salvarOSContinuar && window.salvarOSContinuar()">💾 SALVAR E CONTINUAR</button>
@@ -1558,6 +1588,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           </div>
         </div>
       </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button type="button" class="btn-outline" onclick="window.thiaCopiarLinkClienteCadastro()">COPIAR LINK DO PORTAL</button>
+        <button type="button" class="btn-success" onclick="window.thiaEnviarAcessoClienteCadastro()">ENVIAR LINK AO CLIENTE</button>
+      </div>
+      <small style="display:block;margin-top:7px;color:var(--muted);font-family:var(--fm);font-size:.62rem;">Cliente comum abre cliente.html. Cliente Governo/Oficial abre clienteOficial.html quando o modulo estiver liberado.</small>
     </div>
   </div>
   <div class="modal-foot"><button class="btn-ghost" onclick="fecharModal('modalCliente')">CANCELAR</button><button class="btn-primary" onclick="window.salvarCliente()">SALVAR</button></div>
@@ -1678,20 +1713,22 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="form-group"><label class="j-label">Número NF</label><input class="j-input" id="nfNumero" placeholder="00001" style="font-family:var(--fm);"></div>
       <div class="form-group"><label class="j-label">Data NF</label><input type="date" class="j-input" id="nfData"></div>
     </div>
-    <div style="background:var(--surf3);border:1px solid var(--border);border-radius:3px;padding:14px;margin-bottom:14px;">
-      <div style="font-family:var(--fd);font-weight:700;margin-bottom:10px;">ITENS DA NOTA FISCAL</div>
-      <div id="containerItensNF" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
-      <button class="btn-outline" onclick="window.adicionarItemNF()">+ ADICIONAR ITEM MANUAL</button>
+    <div class="j-collapsible" style="background:var(--surf3);border:1px solid var(--border);border-radius:3px;padding:14px;margin-bottom:14px;">
+      <div class="j-collapsible-head"><div style="font-family:var(--fd);font-weight:700;">ITENS DA NOTA FISCAL</div><button type="button" class="btn-ghost j-collapse-toggle" onclick="window.toggleJarvisCollapse(this)" title="Minimizar ou expandir itens da NF">−</button></div>
+      <div class="j-collapsible-body">
+        <div id="containerItensNF" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+        <button class="btn-outline" onclick="window.adicionarItemNF()">+ ADICIONAR ITEM MANUAL</button>
+      </div>
     </div>
     <div class="form-row cols-3">
       <div class="form-group"><label class="j-label">Forma de Pagamento</label>
         <select class="j-select" id="nfPgtoForma" onchange="window.checkPgtoNF()">
-          <option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option><option value="Boleto">Boleto (Pendente)</option><option value="Parcelado">Parcelado (Títulos)</option>
+          <option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option><option value="Cartão de Débito">Cartão de Débito</option><option value="Cartão de Crédito">Cartão de Crédito</option><option value="Boleto">Boleto (Pendente)</option><option value="Parcelado">Parcelado (Títulos)</option><option value="AgrupamentoPeriodo">Agrupamento por período</option>
         </select>
       </div>
       <div class="form-group"><label class="j-label">Vencimento</label><input type="date" class="j-input" id="nfVenc"></div>
       <div class="form-group" id="divParcelasNF" style="display:none;"><label class="j-label">Parcelas</label>
-        <select class="j-select" id="nfParcelas"><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option></select>
+        <select class="j-select" id="nfParcelas"><option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option><option value="7">7x</option><option value="8">8x</option><option value="9">9x</option><option value="10">10x</option></select>
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;align-items:center;gap:16px;padding:12px;background:rgba(255,59,59,0.04);border:1px dashed rgba(255,59,59,0.2);border-radius:3px;">
@@ -1744,7 +1781,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 <div class="overlay" id="modalFunc">
 <div class="modal" style="max-width:500px;">
   <div class="modal-head"><div class="modal-title">COLABORADOR / EQUIPE</div><button class="modal-close" onclick="fecharModal('modalFunc')">✕</button></div>
-  <div class="modal-body">
+  <form class="modal-body" id="funcForm" onsubmit="event.preventDefault(); window.salvarFunc && window.salvarFunc();">
     <input type="hidden" id="funcId">
     <div class="form-row cols-2">
       <div class="form-group"><label class="j-label">Nome</label><input class="j-input" id="funcNome" placeholder="Nome completo"></div>
@@ -1765,12 +1802,12 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px;">
       <div style="font-family:var(--fm);font-size:0.65rem;color:var(--cyan);letter-spacing:2px;margin-bottom:12px;">CREDENCIAIS DE ACESSO (equipe.html)</div>
       <div class="form-row cols-2">
-        <div class="form-group"><label class="j-label">Usuário de Login</label><input class="j-input" id="funcUser" placeholder="jose.mecanico" style="font-family:var(--fm);"></div>
-        <div class="form-group"><label class="j-label">Senha</label><input type="password" class="j-input" id="funcPass" placeholder="••••••••"></div>
+        <div class="form-group"><label class="j-label">Usuário de Login</label><input class="j-input" id="funcUser" name="username" autocomplete="username" placeholder="jose.mecanico" style="font-family:var(--fm);"></div>
+        <div class="form-group"><label class="j-label">Senha</label><input type="password" class="j-input" id="funcPass" name="password" autocomplete="new-password" placeholder="••••••••"></div>
       </div>
     </div>
-  </div>
-  <div class="modal-foot"><button class="btn-ghost" onclick="fecharModal('modalFunc')">CANCELAR</button><button class="btn-primary" onclick="window.salvarFunc()">ADMITIR</button></div>
+  </form>
+  <div class="modal-foot"><button type="button" class="btn-ghost" onclick="fecharModal('modalFunc')">CANCELAR</button><button type="submit" form="funcForm" class="btn-primary">ADMITIR</button></div>
 </div>
 </div>
 
@@ -1899,17 +1936,45 @@ const J = window.J;
 const $ = id => document.getElementById(id);
 const $v = id => $(id) ? $(id).value.trim() : '';
 
+window.toggleJarvisCollapse = function(btn){
+  const box = btn?.closest?.('.j-card,.j-collapsible');
+  if(!box) return;
+  const minimized = box.classList.toggle(box.classList.contains('j-card') ? 'j-minimized' : 'minimized');
+  if(btn) btn.textContent = minimized ? '+' : '−';
+};
+
 // SESSÃO
 J.tid = sessionStorage.getItem('j_tid');
 J.role = sessionStorage.getItem('j_role');
+J.cargo = sessionStorage.getItem('j_cargo') || '';
+J.fid = sessionStorage.getItem('j_fid') || '';
 J.nome = sessionStorage.getItem('j_nome');
 J.adminEmail = sessionStorage.getItem('j_admin_email') || '';
 J.tnome = sessionStorage.getItem('j_tnome');
-J.gemini = sessionStorage.getItem('j_gemini');
 J.nicho = sessionStorage.getItem('j_nicho') || 'carros';
 J.cloudName = sessionStorage.getItem('j_cloud_name') || 'dmuvm1o6m';
 J.cloudPreset = sessionStorage.getItem('j_cloud_preset') || 'evolution';
 try { J.oficina = JSON.parse(sessionStorage.getItem('j_oficina') || '{}') || {}; } catch(e) { J.oficina = {}; }
+
+function _normCargoJarvis(v){
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+
+function autorChatJarvis(){
+  const cargo = J.cargo || sessionStorage.getItem('j_cargo') || '';
+  const fid = J.fid || sessionStorage.getItem('j_fid') || '';
+  const actorType = sessionStorage.getItem('j_actor_type') || '';
+  const cargoNorm = _normCargoJarvis(cargo);
+  const veioDaEquipe = actorType === 'equipe' || (!!fid && !['dono','proprietario','owner'].includes(cargoNorm));
+  return {
+    de: veioDaEquipe ? fid : J.tid,
+    sender: 'admin',
+    autorTipo: veioDaEquipe ? 'equipe' : 'admin',
+    autorId: veioDaEquipe ? fid : J.tid,
+    autorNome: veioDaEquipe ? (J.nome || 'Equipe') : (J.tnome || J.nome || 'Admin'),
+    autorCargo: veioDaEquipe ? (cargo || 'equipe') : 'admin'
+  };
+}
 
 if(!J.tid) window.location.replace('index.html');
 
@@ -1927,7 +1992,7 @@ J.chatAtivo = null;
 document.addEventListener('DOMContentLoaded', () => {
   $('sbTenantNome').innerText = J.tnome;
   $('sbUserNome').innerText = J.nome;
-  $('sbUserRole').innerText = J.role.toUpperCase();
+  $('sbUserRole').innerText = (J.cargo || J.role || '').toUpperCase();
   $('sbAvatar').innerText = J.nome.charAt(0).toUpperCase();
   
   const nichoLabels = {carros:'🚗 CARROS', motos:'🏍️ MOTOS', bicicletas:'🚲 BICICLETAS'};
@@ -2030,6 +2095,17 @@ document.addEventListener('DOMContentLoaded', () => {
       toggleMenu('chatequipe', mods.chat !== false);
       toggleMenu('ia', mods.ia !== false);
       toggleMenu('tabelatempa', mods.tabelaTempa !== false);
+      toggleMenu('auditoria', mods.auditoria !== false);
+
+      try {
+        if (typeof window.thiaApplyModuleVisibility === 'function') window.thiaApplyModuleVisibility(document);
+        document.body.dataset.modCotacao = mods.cotacao === false ? 'off' : 'on';
+        document.body.dataset.modClienteOficial = mods.clienteOficial === false ? 'off' : 'on';
+        document.body.dataset.modPdf = mods.pdf === false ? 'off' : 'on';
+        document.body.dataset.modXlsx = mods.xlsx === false ? 'off' : 'on';
+        document.body.dataset.modAssinatura = mods.assinatura === false ? 'off' : 'on';
+        document.body.dataset.modCilia = mods.cilia === false ? 'off' : 'on';
+      } catch(e) {}
 
       // Se a tela ATUAL ficou bloqueada, joga o usuário pro dashboard
       try {
@@ -2044,6 +2120,93 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch(e) { /* silencioso */ }
     }
   });
+
+  function aplicarModulosSuperadminCentral(ofi, docId) {
+    if (!ofi) return;
+    J.oficina = { ...(J.oficina || {}), id: docId || J.tid, ...ofi };
+    try { sessionStorage.setItem('j_oficina', JSON.stringify(J.oficina)); } catch(e) {}
+    try { renderAdminsOficina(J.oficina); } catch(e) {}
+    const mods = J.oficina.modulos || {};
+    window._modulosBloq = window._modulosBloq || {};
+
+    const toggleMenu = (key, hasAccess) => {
+      const btn = document.querySelector(`[onclick="ir('${key}',this)"]`);
+      if (btn) btn.style.display = hasAccess ? 'flex' : 'none';
+      const sectionId = sectionMap[key];
+      if (sectionId) {
+        const sec = document.getElementById(sectionId);
+        if (sec && !hasAccess) {
+          sec.classList.remove('active');
+          sec.style.display = 'none';
+        } else if (sec && hasAccess) {
+          sec.style.display = '';
+        }
+      }
+      window._modulosBloq[key] = !hasAccess;
+    };
+
+    toggleMenu('kanban', mods.os !== false);
+    toggleMenu('clientes', mods.crm !== false);
+    toggleMenu('estoque', mods.estoque !== false);
+    toggleMenu('vendas', mods.autoPecas === true);
+    toggleMenu('financeiro', mods.financeiro !== false);
+    toggleMenu('agenda', mods.agenda !== false);
+    toggleMenu('equipe', mods.rh !== false);
+    toggleMenu('chat', mods.chat !== false);
+    toggleMenu('chatequipe', mods.chat !== false);
+    toggleMenu('ia', mods.ia !== false);
+    toggleMenu('tabelatempa', mods.tabelaTempa !== false);
+    toggleMenu('auditoria', mods.auditoria !== false);
+
+    try {
+      if (typeof window.thiaApplyModuleVisibility === 'function') window.thiaApplyModuleVisibility(document);
+      document.body.dataset.modCotacao = mods.cotacao === false ? 'off' : 'on';
+      document.body.dataset.modClienteOficial = mods.clienteOficial === false ? 'off' : 'on';
+      document.body.dataset.modPdf = mods.pdf === false ? 'off' : 'on';
+      document.body.dataset.modXlsx = mods.xlsx === false ? 'off' : 'on';
+      document.body.dataset.modAssinatura = mods.assinatura === false ? 'off' : 'on';
+      document.body.dataset.modCilia = mods.cilia === false ? 'off' : 'on';
+    } catch(e) {}
+
+    try {
+      const sectionAtiva = document.querySelector('.section.active');
+      if (sectionAtiva) {
+        const keyAtiva = Object.keys(sectionMap).find(k => sectionMap[k] === sectionAtiva.id);
+        if (keyAtiva && window._modulosBloq[keyAtiva]) {
+          const dashBtn = document.querySelector('[onclick="ir(\'dashboard\',this)"]');
+          if (dashBtn) ir('dashboard', dashBtn);
+        }
+      }
+    } catch(e) {}
+  }
+
+  try {
+    const centralDb = window.initCentralFirebase ? window.initCentralFirebase() : null;
+    if (centralDb) {
+      const refs = Array.from(new Set([
+        J.tid,
+        J.oficina?.id,
+        J.oficina?.slug,
+        J.oficina?.publicSlug,
+        J.oficina?.oficinaSlug,
+        J.oficina?.tenantSlug
+      ].map(v => String(v || '').trim()).filter(Boolean)));
+
+      refs.forEach(ref => {
+        centralDb.collection('oficinas').doc(ref).onSnapshot(doc => {
+          if (doc.exists) aplicarModulosSuperadminCentral(doc.data(), doc.id);
+        }, err => console.log('[modulos central doc]', err.message));
+      });
+
+      ['slug','publicSlug','oficinaSlug','tenantSlug'].forEach(campo => {
+        refs.forEach(ref => {
+          centralDb.collection('oficinas').where(campo, '==', ref).limit(1).onSnapshot(snap => {
+            if (!snap.empty) aplicarModulosSuperadminCentral(snap.docs[0].data(), snap.docs[0].id);
+          }, err => console.log('[modulos central slug]', err.message));
+        });
+      });
+    }
+  } catch(e) { console.log('[modulos central]', e.message); }
 });
 const sectionMap = { dashboard:'s-dashboard', agenda:'s-agenda', kanban:'s-kanban', clientes:'s-clientes', estoque:'s-estoque', vendas:'s-vendas', financeiro:'s-financeiro', equipe:'s-equipe', chat:'s-chat', chatequipe:'s-chatequipe', ia:'s-ia', tabelatempa:'s-tabelatempa', auditoria:'s-auditoria', oficina:'s-oficina' };
 const titleMap = { dashboard:'DASHBOARD', agenda:'AGENDA', kanban:'PÁTIO / O.S.', clientes:'CLIENTES & VEÍCULOS', estoque:'ESTOQUE / NF', vendas:'VENDAS / AUTOPEÇAS', financeiro:'FINANCEIRO / DRE', equipe:'EQUIPE & RH', chat:'CRM CHAT', chatequipe:'CHAT EQUIPE', ia:'thIAguinho IA', tabelatempa:'TABELA TEMPÁRIA', auditoria:'AUDITORIA', oficina:'OFICINA / ADMINS' };
@@ -2373,13 +2536,64 @@ window.escutarMensagens = function() {
 J.chatEquipeAtivo = null;
 J.chatEquipeMsgs = [];
 
+function chatEquipeMeuFid(){ return J.fid || sessionStorage.getItem('j_fid') || ''; }
+function chatEquipeSouEquipe(){ return !!chatEquipeMeuFid() || sessionStorage.getItem('j_actor_type') === 'equipe'; }
+function chatEquipeMeuId(){ return chatEquipeSouEquipe() ? chatEquipeMeuFid() : J.tid; }
+function chatEquipeAdminContato(){ return { id:'admin', nome:J.tnome || 'Admin da oficina', cargo:'Admin / Gestor', tipoContato:'admin' }; }
+function chatEquipeEscArg(v){ return String(v || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+function chatEquipeIdSet(id){
+  const s = new Set([String(id || '')]);
+  if(String(id || '') === 'admin' || String(id || '') === String(J.tid || '')) {
+    s.add('admin');
+    if(J.tid) s.add(String(J.tid));
+  }
+  return s;
+}
+function chatEquipeNomePorId(id){
+  const sid = String(id || '');
+  if(sid === 'admin' || sid === String(J.tid || '')) return J.tnome || 'Admin';
+  const f = (J.equipe || []).find(x => String(x.id || '') === sid);
+  return f?.nome || 'Equipe';
+}
+function chatEquipeContatos(){
+  const meuFid = chatEquipeMeuFid();
+  const equipe = (J.equipe || []).filter(f => !meuFid || String(f.id || '') !== String(meuFid));
+  if(chatEquipeSouEquipe()) return [chatEquipeAdminContato()].concat(equipe);
+  return equipe;
+}
+function chatEquipeMsgsDoContato(contatoId){
+  const meuIds = chatEquipeIdSet(chatEquipeMeuId());
+  const contatoIds = chatEquipeIdSet(contatoId);
+  return (J.chatEquipeMsgs || []).filter(m => {
+    const de = String(m.de || '');
+    const para = String(m.para || '');
+    if(chatEquipeSouEquipe()) {
+      return (meuIds.has(de) && contatoIds.has(para)) || (contatoIds.has(de) && meuIds.has(para));
+    }
+    return contatoIds.has(de) || contatoIds.has(para);
+  });
+}
+function chatEquipeUnreadContato(contatoId){
+  const meus = chatEquipeIdSet(chatEquipeMeuId());
+  return chatEquipeMsgsDoContato(contatoId).filter(m => {
+    const de = String(m.de || '');
+    if(meus.has(de)) return false;
+    return chatEquipeSouEquipe() ? !m.lidaEquipe : !m.lidaAdmin;
+  }).length;
+}
+function chatEquipeParaAtual(){
+  if(chatEquipeSouEquipe() && (String(J.chatEquipeAtivo || '') === 'admin' || String(J.chatEquipeAtivo || '') === String(J.tid || ''))) return 'admin';
+  return J.chatEquipeAtivo;
+}
+function chatEquipeSenderAtual(){ return chatEquipeSouEquipe() ? 'equipe' : 'admin'; }
+
 window.escutarChatEquipe = function() {
   db.collection('chat_equipe').where('tenantId','==',J.tid).onSnapshot(snap => {
     J.chatEquipeMsgs = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.ts||0)-(b.ts||0));
     window.renderChatEquipeLista();
     if (J.chatEquipeAtivo) window.renderChatEquipeMsgs(J.chatEquipeAtivo);
     // Badge: mensagens de equipe não lidas pelo admin
-    const nLidas = J.chatEquipeMsgs.filter(m => m.sender==='equipe' && !m.lidaAdmin).length;
+    const nLidas = chatEquipeContatos().reduce((total, c) => total + chatEquipeUnreadContato(c.id), 0);
     const badge = $('chatEquipeBadge');
     if(badge){ if(nLidas>0){badge.style.display='block';badge.innerText=nLidas;}else badge.style.display='none'; }
   });
@@ -2388,15 +2602,20 @@ window.escutarChatEquipe = function() {
 window.renderChatEquipeLista = function() {
   const lista = $('chatEquipeLista');
   if (!lista) return;
-  lista.innerHTML = J.equipe.map(f => {
-    const msgs = J.chatEquipeMsgs.filter(m => m.de === f.id || m.para === f.id);
+  const contatos = chatEquipeContatos();
+  if (J.chatEquipeAtivo && !contatos.some(c => String(c.id) === String(J.chatEquipeAtivo))) J.chatEquipeAtivo = null;
+  lista.innerHTML = contatos.map(f => {
+    const msgs = chatEquipeMsgsDoContato(f.id);
     const ultima = msgs[msgs.length - 1];
-    const nLidas = msgs.filter(m => m.sender === 'equipe' && !m.lidaAdmin).length;
-    return `<div class="chat-item ${J.chatEquipeAtivo===f.id?'active':''}" onclick="window.abrirChatEquipe('${f.id}','${f.nome}')">
-      <div class="chat-item-name">${f.nome} ${nLidas>0?`<span class="chat-unread">${nLidas}</span>`:''}</div>
-      <div class="chat-item-last">${f.cargo||'Equipe'} · ${ultima?.msg?.substring(0,30)||'Sem mensagens'}</div>
+    const nLidas = chatEquipeUnreadContato(f.id);
+    const nome = f.nome || 'Contato';
+    const cargo = f.cargo || (f.tipoContato === 'admin' ? 'Admin / Gestor' : 'Equipe');
+    const preview = ultima?.msg ? String(ultima.msg).substring(0,30) : 'Sem mensagens';
+    return `<div class="chat-item ${String(J.chatEquipeAtivo)===String(f.id)?'active':''}" onclick="window.abrirChatEquipe('${chatEquipeEscArg(f.id)}','${chatEquipeEscArg(nome)}')">
+      <div class="chat-item-name">${_escHtmlJ?_escHtmlJ(nome):nome} ${nLidas>0?`<span class="chat-unread">${nLidas}</span>`:''}</div>
+      <div class="chat-item-last">${_escHtmlJ?_escHtmlJ(cargo):cargo} - ${_escHtmlJ?_escHtmlJ(preview):preview}</div>
     </div>`;
-  }).join('') || '<div style="padding:20px;color:var(--muted);font-size:0.75rem;text-align:center;">Nenhum membro</div>';
+  }).join('') || '<div style="padding:20px;color:var(--muted);font-size:0.75rem;text-align:center;">Nenhum contato de equipe</div>';
 };
 
 window.abrirChatEquipe = function(fid, nome) {
@@ -2405,27 +2624,27 @@ window.abrirChatEquipe = function(fid, nome) {
   if (head) head.innerHTML = '<button type="button" class="chat-back-btn" onclick="window.fecharChatMobile(\'chatequipe\')" aria-label="Voltar para lista">‹</button>CHAT: '+(_escHtmlJ?_escHtmlJ(nome):nome).toUpperCase();
   const foot = $('chatEquipeFoot');
   if (foot) foot.style.display = 'flex';
-  // No mobile: marca o layout como "conversa aberta"
   const layoutEq = document.querySelector('#s-chatequipe .chat-layout');
   if(layoutEq) layoutEq.classList.add('chat-open');
   window.renderChatEquipeMsgs(fid);
-  // Marcar como lidas
+  const meus = chatEquipeIdSet(chatEquipeMeuId());
   J.chatEquipeMsgs
-    .filter(m => m.de === fid && m.sender === 'equipe' && !m.lidaAdmin)
-    .forEach(m => db.collection('chat_equipe').doc(m.id).update({lidaAdmin:true}).catch(()=>{}));
+    .filter(m => !meus.has(String(m.de || '')) && chatEquipeMsgsDoContato(fid).some(x => x.id === m.id))
+    .forEach(m => db.collection('chat_equipe').doc(m.id).update(chatEquipeSouEquipe() ? {lidaEquipe:true} : {lidaAdmin:true}).catch(()=>{}));
 };
 
 window.renderChatEquipeMsgs = function(fid) {
   const box = $('chatEquipeMsgs');
   if (!box) return;
-  const msgs = J.chatEquipeMsgs.filter(m => m.de === fid || m.para === fid);
+  const meus = chatEquipeIdSet(chatEquipeMeuId());
+  const msgs = chatEquipeMsgsDoContato(fid);
   box.innerHTML = msgs.map(m => {
-    const lado = m.sender === 'admin' ? 'admin' : 'cliente';
-    const nome = m.sender === 'admin' ? 'Admin' : (J.equipe.find(f=>f.id===m.de)?.nome || 'Equipe');
+    const lado = meus.has(String(m.de || '')) ? 'admin' : 'cliente';
+    const nome = m.autorNome || chatEquipeNomePorId(m.de);
     const ts = m.ts ? new Date(m.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     const conteudo = window.formatarMidiaChatJ ? window.formatarMidiaChatJ(m.msg) : (m.msg||'').replace(/\n/g,'<br>');
     return `<div class="chat-msg ${lado}">
-      <strong style="font-size:0.65rem;color:${lado==='admin'?'var(--cyan)':'var(--muted2)'}">${nome}</strong><br>
+      <strong style="font-size:0.65rem;color:${lado==='admin'?'var(--cyan)':'var(--muted2)'}">${_escHtmlJ?_escHtmlJ(nome):nome}</strong><br>
       ${conteudo}
       <div class="ts">${ts}</div>
     </div>`;
@@ -2436,14 +2655,20 @@ window.renderChatEquipeMsgs = function(fid) {
 window.enviarChatEquipe = async function() {
   const msg = $v('chatEquipeInput');
   if (!msg || !J.chatEquipeAtivo) return;
+  const autor = autorChatJarvis();
+  const souEquipe = chatEquipeSouEquipe();
   await db.collection('chat_equipe').add({
     tenantId: J.tid,
-    de: J.tid,
-    para: J.chatEquipeAtivo,
-    sender: 'admin',
+    de: autor.de,
+    para: chatEquipeParaAtual(),
+    sender: chatEquipeSenderAtual(),
+    autorTipo: autor.autorTipo,
+    autorId: autor.autorId,
+    autorNome: autor.autorNome,
+    autorCargo: autor.autorCargo,
     msg,
-    lidaEquipe: false,
-    lidaAdmin: true,
+    lidaEquipe: souEquipe,
+    lidaAdmin: !souEquipe,
     ts: Date.now()
   });
   if ($('chatEquipeInput')) $('chatEquipeInput').value = '';
@@ -2649,9 +2874,32 @@ window.salvarCliente = async function() {
     window.toast('✕ ERRO AO SALVAR: ' + e.message, 'err');
   }
 };
+function normalizarBuscaCadastroJV(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
 window.renderClientes = function() {
   if(!$('tbClientes')) return;
-  $('tbClientes').innerHTML = J.clientes.map(c=>{
+  const termoClientes = normalizarBuscaCadastroJV($('buscaClientesCadastro')?.value || '');
+  const clientesFiltrados = (J.clientes || []).filter(c => {
+    if (!termoClientes) return true;
+    const docClienteBusca = String(c.doc || c.cpf || c.cnpj || '').replace(/\D+/g,'');
+    const nomeClienteBusca = String(c.nome || c.razaoSocial || '').trim().toLowerCase();
+    const veiculosClienteBusca = (J.veiculos || []).filter(v => {
+      const ids = [v.clienteId, v.donoId, v.ownerId, v.cliente, v.clienteRef].filter(Boolean).map(String);
+      if (ids.includes(String(c.id))) return true;
+      const docVeic = String(v.clienteDoc || v.cpf || v.cnpj || '').replace(/\D+/g,'');
+      if (docClienteBusca && docVeic && docClienteBusca === docVeic) return true;
+      const nomeVeic = String(v.clienteNome || v.dono || v.proprietario || '').trim().toLowerCase();
+      return !!nomeClienteBusca && !!nomeVeic && nomeVeic === nomeClienteBusca;
+    });
+    const textoBusca = [
+      c.nome, c.razaoSocial, c.nomeFantasia, c.doc, c.cpf, c.cnpj, c.wpp, c.telefone, c.celular,
+      c.email, c.login, c.pin, c.tipoCliente, c.govUnidade, c.govFiscal,
+      veiculosClienteBusca.map(v => [v.placa, v.modelo, v.marca, v.prefixo, v.frota, v.chassis, v.chassi, v.patrimonio, v.km].filter(Boolean).join(' ')).join(' ')
+    ].filter(Boolean).join(' ');
+    return normalizarBuscaCadastroJV(textoBusca).includes(termoClientes);
+  });
+  $('tbClientes').innerHTML = clientesFiltrados.map(c=>{
     const docCliente = String(c.doc || c.cpf || c.cnpj || '').replace(/\D+/g,'');
     const nomeCliente = String(c.nome || c.razaoSocial || '').trim().toLowerCase();
     const veicsCliente = J.veiculos.filter(v=>{
@@ -2688,12 +2936,15 @@ window.renderClientes = function() {
 window._wppAcessoCliente = function(cid) {
   const c = J.clientes.find(x => x.id === cid);
   if (!c?.wpp) return;
+  if (c.tipoCliente === 'governo' && typeof window.thiaModEnabled === 'function' && !window.thiaModEnabled('clienteOficial')) {
+    toast('Cliente Oficial bloqueado para esta oficina pelo Superadmin.', 'warn');
+    return;
+  }
   const fone = c.wpp.replace(/\D/g, '');
-  // Link correto: governo → clienteOficial, demais → cliente
-  const isGov = c.tipoCliente === 'governo';
-  const link = typeof window.thiaGetPublicUrl === 'function'
-    ? window.thiaGetPublicUrl(isGov ? 'clienteOficial' : 'cliente', { tenant: J.tid || '' })
-    : `${isGov ? 'clienteOficial.html' : 'cliente.html'}?tenant=${encodeURIComponent(J.tid || '')}`;
+  // Link publico centralizado: governo -> clienteOficial, demais -> cliente.
+  const link = typeof window.thiaGetClientePortalUrl === 'function'
+    ? window.thiaGetClientePortalUrl({ tenant: J.oficina?.slug || J.oficina?.publicSlug || J.oficina?.oficinaSlug || J.tid || '', cliente: c, login: c.login || '' })
+    : `https://tsvalencio-ia.github.io/OFICIN-IA/${c.tipoCliente === 'governo' ? 'clienteOficial.html' : 'cliente.html'}?tenant=${encodeURIComponent(J.tid || '')}&login=${encodeURIComponent(c.login || '')}`;
   const msg =
     `Olá ${c.nome.split(' ')[0]}! 👋\n\n` +
     `Aqui é a *${J.tnome}*. Seu acesso ao portal do cliente S.O.S Valêncio está pronto!\n\n` +
@@ -2701,7 +2952,72 @@ window._wppAcessoCliente = function(cid) {
     `👤 Usuário: *${c.login || c.nome.split(' ')[0].toLowerCase()}*\n` +
     `🔑 PIN: *${c.pin || '—'}*\n\n` +
     `Pelo portal você acompanha suas O.S. e conversa com a equipe.`;
-  window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+  if (typeof window.thiaOpenWhatsApp === 'function') window.thiaOpenWhatsApp(fone, msg);
+  else window.open(`https://web.whatsapp.com/send?phone=55${fone}&text=${encodeURIComponent(msg)}`, '_blank');
+};
+
+window.thiaClienteCadastroSnapshot = function() {
+  const id = $('cliId')?.value || '';
+  const salvo = id ? (J.clientes || []).find(x => x.id === id) : null;
+  const tipoCliente = $('cliTipoGov')?.checked ? 'governo' : 'b2c';
+  const nome = ($('cliNome')?.value || salvo?.nome || '').trim();
+  const login = ($('cliLogin')?.value || salvo?.login || nome.split(' ')[0]?.toLowerCase() || '').trim();
+  return Object.assign({}, salvo || {}, {
+    id,
+    nome,
+    wpp: ($('cliWpp')?.value || salvo?.wpp || '').replace(/\D/g, ''),
+    login,
+    pin: ($('cliPin')?.value || salvo?.pin || '').trim(),
+    tipoCliente
+  });
+};
+
+window.thiaLinkClienteCadastro = function() {
+  const c = window.thiaClienteCadastroSnapshot();
+  if (c.tipoCliente === 'governo' && typeof window.thiaModEnabled === 'function' && !window.thiaModEnabled('clienteOficial')) {
+    toast('Cliente Oficial bloqueado para esta oficina pelo Superadmin.', 'warn');
+    return '';
+  }
+  if (typeof window.thiaGetClientePortalUrl === 'function') {
+    return window.thiaGetClientePortalUrl({
+      tenant: J.oficina?.slug || J.oficina?.publicSlug || J.oficina?.oficinaSlug || J.tid || '',
+      cliente: c,
+      login: c.login || ''
+    });
+  }
+  return `https://tsvalencio-ia.github.io/OFICIN-IA/${c.tipoCliente === 'governo' ? 'clienteOficial.html' : 'cliente.html'}?tenant=${encodeURIComponent(J.tid || '')}&login=${encodeURIComponent(c.login || '')}`;
+};
+
+window.thiaCopiarLinkClienteCadastro = async function() {
+  const link = window.thiaLinkClienteCadastro();
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast('Link do portal copiado.', 'ok');
+  } catch (_) {
+    prompt('Copie o link do portal:', link);
+  }
+};
+
+window.thiaEnviarAcessoClienteCadastro = function() {
+  const c = window.thiaClienteCadastroSnapshot();
+  if (!c.nome) { toast('Informe o nome do cliente antes de enviar.', 'warn'); return; }
+  if (!c.login) { toast('Informe ou gere o login do cliente antes de enviar.', 'warn'); return; }
+  if (!c.pin) { toast('Informe ou gere o PIN do cliente antes de enviar.', 'warn'); return; }
+  if (!c.wpp) { toast('Informe o WhatsApp do cliente antes de enviar.', 'warn'); return; }
+  const link = window.thiaLinkClienteCadastro();
+  if (!link) return;
+  const primeiroNome = c.nome.split(' ')[0] || 'cliente';
+  const portal = c.tipoCliente === 'governo' ? 'portal Cliente Oficial' : 'portal do cliente';
+  const msg =
+    `Olá ${primeiroNome}!\n\n` +
+    `Aqui é a *${J.tnome || 'oficina'}*. Seu acesso ao ${portal} está pronto.\n\n` +
+    `Link: ${link}\n` +
+    `Usuário: *${c.login}*\n` +
+    `PIN: *${c.pin}*\n\n` +
+    `Pelo portal você acompanha suas O.S., documentos autorizados e mensagens da oficina.`;
+  if (typeof window.thiaOpenWhatsApp === 'function') window.thiaOpenWhatsApp(c.wpp, msg);
+  else window.open(`https://web.whatsapp.com/send?phone=55${String(c.wpp).replace(/\D/g,'')}&text=${encodeURIComponent(msg)}`, '_blank');
 };
 // ═══════════════════════════════════════════════════════════════════════
 // EXCLUSÃO DEFINITIVA — dupla confirmação + auditoria obrigatória
@@ -2830,9 +3146,10 @@ window.excluirFuncionarioDef = function(id) {
   });
 };
 window.excluirNFDef = function(id) {
+  const nf = J.notasFiscaisEntrada?.find(x => x.id === id);
   return window._excluirDef({
-    collection: 'notas_entrada', id,
-    label: `NF #${id.slice(-6).toUpperCase()}`,
+    collection: 'notas_fiscais_entrada', id,
+    label: `NF ${nf?.numero || '#'+id.slice(-6).toUpperCase()}`,
     modulo: 'NF_ENTRADA'
   });
 };
@@ -2886,7 +3203,17 @@ window.salvarVeiculo = async function() {
 window.renderVeiculos = function() {
   if(!$('tbVeiculos')) return;
   const tipos = {carro:'🚗',moto:'🏍️',bicicleta:'🚲'};
-  $('tbVeiculos').innerHTML = J.veiculos.map(v=>{
+  const termoVeiculos = normalizarBuscaCadastroJV($('buscaVeiculosCadastro')?.value || '');
+  const veiculosFiltrados = (J.veiculos || []).filter(v => {
+    if (!termoVeiculos) return true;
+    const c = J.clientes.find(x => x.id === v.clienteId) || {};
+    const textoBusca = [
+      v.placa, v.tipo, v.modelo, v.marca, v.ano, v.cor, v.km, v.prefixo, v.frota, v.chassis, v.chassi,
+      v.patrimonio, v.patrimonioNumero, v.obs, c.nome, c.razaoSocial, c.nomeFantasia, c.doc, c.cpf, c.cnpj, c.wpp, c.login
+    ].filter(Boolean).join(' ');
+    return normalizarBuscaCadastroJV(textoBusca).includes(termoVeiculos);
+  });
+  $('tbVeiculos').innerHTML = veiculosFiltrados.map(v=>{
     const c=J.clientes.find(x=>x.id===v.clienteId);
     return `<tr><td><span class="placa-badge">${v.placa||'-'}</span></td><td>${tipos[v.tipo]||'🚗'}</td><td>${v.modelo||'-'}</td><td>${c?.nome||'-'}</td><td style="font-family:var(--fm);">${v.km||'-'}</td><td><button class="btn-ghost" onclick="window.prepVeiculo('edit','${v.id}');abrirModal('modalVeiculo')">✏</button><button class="btn-danger" style="margin-left:4px" onclick="window.excluirVeiculoDef('${v.id}')">🗑</button></td></tr>`;
   }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px;">Nenhum veículo</td></tr>';
@@ -2918,10 +3245,24 @@ window.salvarPeca = async function() {
 }
 window.renderEstoque = function() {
   if(!$('tbEstoque')) return;
-  $('tbEstoque').innerHTML = J.estoque.map(p=>{
+  if(!$('buscaEstoquePecas')) {
+    const tableEstoque = $('tbEstoque').closest('table');
+    if(tableEstoque && tableEstoque.parentNode) {
+      const boxBusca = document.createElement('div');
+      boxBusca.style.cssText = 'padding:12px;border-bottom:1px solid var(--border);';
+      boxBusca.innerHTML = '<input class="j-input" id="buscaEstoquePecas" placeholder="Pesquisar peça por código, descrição, marca, fornecedor ou NF..." oninput="window._estoqueBuscaPecas=this.value;window.renderEstoque()">';
+      tableEstoque.parentNode.insertBefore(boxBusca, tableEstoque);
+    }
+  }
+  const termo = String(window._estoqueBuscaPecas || $('buscaEstoquePecas')?.value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  const listaEstoque = termo ? (J.estoque || []).filter(p => {
+    const txt = [p.codigo, p.codigoFornecedor, p.codigoComercial, p.oem, p.ean, p.desc, p.descricao, p.marca, p.fornecedorNome, p.ultimaFornecedor, p.ultimaNF].join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    return txt.includes(termo);
+  }) : (J.estoque || []);
+  $('tbEstoque').innerHTML = listaEstoque.map(p=>{
     const crit=(p.qtd||0)<=(p.min||0);
     return `<tr class="${crit?'stock-critical':''}"><td style="font-family:var(--fm);font-size:0.75rem;color:var(--muted)">${p.codigo||'-'}</td><td><strong>${p.desc}</strong></td><td style="font-family:var(--fm)">${moeda(p.custo)}</td><td style="font-family:var(--fm);color:var(--success)">${moeda(p.venda)}</td><td style="font-family:var(--fm);font-weight:700;color:${crit?'var(--danger)':'var(--text)'}">${p.qtd||0}</td><td style="font-family:var(--fm);color:var(--muted)">${p.min||0}</td><td>${crit?'<span class="pill pill-danger">CRÍTICO</span>':'<span class="pill pill-green">OK</span>'}</td><td><button class="btn-ghost" onclick="window.prepPeca('edit','${p.id}');abrirModal('modalPeca')">✏</button></td></tr>`;
-  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">Nenhum item</td></tr>';
+  }).join('') || `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px;">${termo ? 'Nenhuma peça encontrada' : 'Nenhum item'}</td></tr>`;
 }
 
 function vendaModuloLiberado(canal){
@@ -3111,13 +3452,15 @@ window.renderChatMsgs = function(cid) {
     const ts = m.ts ? new Date(m.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '';
     const lado = m.sender==='admin' ? 'admin' : 'cliente';
     const conteudo = window.formatarMidiaChatJ ? window.formatarMidiaChatJ(m.msg) : (m.msg || '').replace(/\n/g,'<br>');
-    return `<div class="chat-msg ${lado}">${conteudo}<div class="ts">${ts}</div></div>`;
+    const autor = m.sender==='admin' && m.autorNome ? `<strong style="display:block;font-size:0.65rem;color:var(--cyan);margin-bottom:4px;">${_escHtmlJ(m.autorNome)}${m.autorCargo?` <span style="color:var(--muted2)">(${_escHtmlJ(m.autorCargo)})</span>`:''}</strong>` : '';
+    return `<div class="chat-msg ${lado}">${autor}${conteudo}<div class="ts">${ts}</div></div>`;
   }).join('');
   $('chatMsgs').scrollTop=$('chatMsgs').scrollHeight;
 };
 window.enviarChat = async function(txt) {
   const msg= txt || $v('chatInput'); if(!msg||!J.chatAtivo) return;
-  await db.collection('mensagens').add({tenantId:J.tid,clienteId:J.chatAtivo,sender:'admin',msg,lidaCliente:false,ts:Date.now()});
+  const autor = autorChatJarvis();
+  await db.collection('mensagens').add({tenantId:J.tid,clienteId:J.chatAtivo,sender:'admin',autorTipo:autor.autorTipo,autorId:autor.autorId,autorNome:autor.autorNome,autorCargo:autor.autorCargo,msg,lidaCliente:false,ts:Date.now()});
   if($('chatInput')) $('chatInput').value='';
 }
 document.getElementById('chatInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')window.enviarChat();});
@@ -3264,17 +3607,23 @@ window.togglePTT = async function(btnId, destino){
 
         const payload = '[AUDIO]' + data.secure_url;
         const dest = window._pttStateJ.destino;
+        const autor = autorChatJarvis();
+        const souEquipeChat = chatEquipeSouEquipe();
 
         if(dest === 'equipe'){
           await db.collection('chat_equipe').add({
             tenantId: J.tid,
-            de: J.tid,
-            para: J.chatEquipeAtivo,
-            sender: 'admin',
+            de: autor.de,
+            para: chatEquipeParaAtual(),
+            sender: chatEquipeSenderAtual(),
+            autorTipo: autor.autorTipo,
+            autorId: autor.autorId,
+            autorNome: autor.autorNome,
+            autorCargo: autor.autorCargo,
             msg: payload,
             tipo: 'audio',
             url: data.secure_url,
-            lidaEquipe: false, lidaAdmin: true,
+            lidaEquipe: souEquipeChat, lidaAdmin: !souEquipeChat,
             ts: Date.now()
           });
         } else {
@@ -3282,6 +3631,10 @@ window.togglePTT = async function(btnId, destino){
             tenantId: J.tid,
             clienteId: J.chatAtivo,
             sender: 'admin',
+            autorTipo: autor.autorTipo,
+            autorId: autor.autorId,
+            autorNome: autor.autorNome,
+            autorCargo: autor.autorCargo,
             msg: payload,
             tipo: 'audio',
             url: data.secure_url,
@@ -3368,10 +3721,15 @@ window.enviarArquivoChat = async function(input){
     else if(isVideo) msgTexto = '[VIDEO]'  + data.secure_url;
     else             msgTexto = '[ARQUIVO]'+ data.secure_url;
 
+    const autor = autorChatJarvis();
     await db.collection('mensagens').add({
       tenantId: J.tid,
       clienteId: J.chatAtivo,
       sender: 'admin',
+      autorTipo: autor.autorTipo,
+      autorId: autor.autorId,
+      autorNome: autor.autorNome,
+      autorCargo: autor.autorCargo,
       msg: msgTexto,
       tipo: tipo,
       url: data.secure_url,
@@ -3417,16 +3775,22 @@ window.enviarArquivoChatEquipe = async function(input){
     else if(isVideo) msgTexto = '[VIDEO]'  + data.secure_url;
     else             msgTexto = '[ARQUIVO]'+ data.secure_url;
 
+    const autor = autorChatJarvis();
+    const souEquipeChat = chatEquipeSouEquipe();
     await db.collection('chat_equipe').add({
       tenantId: J.tid,
-      de: J.tid,
-      para: J.chatEquipeAtivo,
-      sender: 'admin',
+      de: autor.de,
+      para: chatEquipeParaAtual(),
+      sender: chatEquipeSenderAtual(),
+      autorTipo: autor.autorTipo,
+      autorId: autor.autorId,
+      autorNome: autor.autorNome,
+      autorCargo: autor.autorCargo,
       msg: msgTexto,
       tipo: tipo,
       url: data.secure_url,
       nomeArquivo: file.name,
-      lidaEquipe: false, lidaAdmin: true,
+      lidaEquipe: souEquipeChat, lidaAdmin: !souEquipeChat,
       ts: Date.now()
     });
 
@@ -3539,140 +3903,32 @@ window.renderAuditoria = function() {
   $('tbAuditoria').innerHTML = J.auditoria.slice(0,100).map(a=>`<tr><td style="font-family:var(--fm);font-size:0.72rem;color:var(--muted)">${dtHrBr(a.ts)}</td><td><span class="pill pill-cyan">${a.modulo||'-'}</span></td><td style="font-family:var(--fm);color:var(--cyan)">${a.usuario||'-'}</td><td>${a.acao||'-'}</td></tr>`).join('');
 }
 
-// GEMINI IA
-// ═══════════════════════════════════════════════════════════════
-// IA — A implementação real está em js/ia.js (Gemini 2.0 Flash +
-// 24 meses de histórico + Google Search grounding + upload de PDF/imagem).
-// Este bloco foi removido pois sobrescrevia a função avançada.
-// ═══════════════════════════════════════════════════════════════
+// IA LOCAL
 let _jiaHist = [];
-
-function _buildContextoIA() {
-  const hoje = new Date();
-  const mesAtual = hoje.toISOString().slice(0,7); // YYYY-MM
-
-  // ── OS ──
-  let osCtx = '';
-  (J.os || []).forEach(o => {
-    const cli = (J.clientes||[]).find(c=>c.id===o.clienteId)||{};
-    const veic = (J.veiculos||[]).find(v=>v.id===o.veiculoId)||{};
-    const servs = (o.servicos||[]).map(s=>`${s.desc}(${s.tempo||0}h R$${s.valor||0})`).join(', ');
-    const pecas = (o.pecas||[]).map(p=>`${p.desc||p.codigo} x${p.qtd||1} R$${p.venda||0}`).join(', ');
-    const UOS = window.JOS || window.JarvisOSUtils || {};
-    const itens = UOS.buildBudgetItems?.(o, null) || [];
-    const keys = UOS.getApprovedKeys?.(o) || new Set(o.itensAprovados || []);
-    const exec = o.execucaoItens || {};
-    const aprov = itens.filter(i=>keys.has(i.key)).map(i=>`${i.labelTipo||i.tipo}: ${i.desc} [exec:${exec[i.key]?.status||'pendente'}${exec[i.key]?.obs?' obs:'+exec[i.key].obs:''}]`).join('; ') || 'sem itens aprovados';
-    const nao = itens.length ? itens.filter(i=>!keys.has(i.key)).map(i=>`${i.labelTipo||i.tipo}: ${i.desc}`).join('; ') : 'sem itens não aprovados';
-    osCtx += `OS#${(o.id||'').slice(-6)} | ${o.status||'?'} | Cli:${cli.nome||o.cliente||'?'} | Veic:${veic.placa||o.placa||'?'} ${veic.modelo||o.veiculo||''} | KM:${o.km||'?'} | Data:${o.data||''} | Total:R$${o.total||0} | ORCAMENTO:[Serv:${servs}] [Peças:${pecas}] | APROVADOS:${aprov} | NAO_APROVADOS_HISTORICO:${nao} | EntregueA:${o.entreguePara||'-'}
-`;
-  });
-
-  // ── FINANCEIRO ──
-  const finHoje = (J.financeiro||[]).filter(f=>{
-    try { return new Date(f.data||f.vencimento).toDateString()===hoje.toDateString(); } catch(e){return false;}
-  });
-  const finMes = (J.financeiro||[]).filter(f=>{
-    try { return (f.data||f.vencimento||'').startsWith(mesAtual); } catch(e){return false;}
-  });
-  const contasPagar = finHoje.filter(f=>f.tipo==='despesa'||f.tipo==='saida');
-  const receitasMes = finMes.filter(f=>f.tipo==='receita'||f.tipo==='entrada').reduce((s,f)=>s+parseFloat(f.valor||0),0);
-  const despMes = finMes.filter(f=>f.tipo==='despesa'||f.tipo==='saida').reduce((s,f)=>s+parseFloat(f.valor||0),0);
-  const saldo = receitasMes - despMes;
-
-  let finCtx = `FINANCEIRO ${mesAtual}: Receitas=R$${receitasMes.toFixed(2)} Despesas=R$${despMes.toFixed(2)} Saldo=R$${saldo.toFixed(2)}
-`;
-  finCtx += `CONTAS PAGAR HOJE(${hoje.toLocaleDateString('pt-BR')}): ${contasPagar.length ? contasPagar.map(f=>`${f.desc||f.descricao||'?'} R$${f.valor||0}`).join('; ') : 'Nenhuma'}
-`;
-
-  // ── ESTOQUE ──
-  const estCrit = (J.estoque||[]).filter(p=>parseFloat(p.qtd||0)<=parseFloat(p.min||0));
-  const estCtx = `ESTOQUE: ${(J.estoque||[]).length} itens. Críticos(abaixo min): ${estCrit.length>0 ? estCrit.map(p=>`${p.desc}(${p.qtd}un)`).join(', ') : 'Nenhum'}
-`;
-
-  // ── EQUIPE / COMISSÕES ──
-  let equCtx = '';
-  (J.equipe||[]).forEach(e => {
-    const osMec = (J.os||[]).filter(o=>o.mecId===e.id&&(o.data||'').startsWith(mesAtual));
-    const totalMec = osMec.reduce((s,o)=>s+parseFloat(o.maoObra||o.total||0),0);
-    const comissao = +(totalMec * parseFloat(e.comissao||0)).toFixed(2);
-    equCtx += `Func:${e.nome||'?'} Cargo:${e.cargo||'?'} Salário:R$${e.salario||0} Comissão%:${(parseFloat(e.comissao||0)*100).toFixed(0)}% OS no mês:${osMec.length} MO gerada:R$${totalMec.toFixed(2)} Comissão a pagar:R$${comissao}
-`;
-  });
-
-  // ── CLIENTES / VEÍCULOS ──
-  const cliCtx = `CLIENTES: ${(J.clientes||[]).length} cadastrados. VEÍCULOS: ${(J.veiculos||[]).length} cadastrados.
-`;
-
-  return [
-    `=== CONTEXTO REAL DO SISTEMA thIAguinho (${new Date().toLocaleString('pt-BR')}) ===`,
-    `OFICINA: ${J.tnome||'?'} | USUÁRIO: ${J.nome||'?'}`,
-    cliCtx,
-    `=== ORDENS DE SERVIÇO (${(J.os||[]).length} total) ===`,
-    osCtx || 'Nenhuma OS cadastrada.',
-    `=== FINANCEIRO ===`,
-    finCtx,
-    estCtx,
-    `=== EQUIPE (${(J.equipe||[]).length} funcionários) ===`,
-    equCtx || 'Sem funcionários cadastrados.',
-    `=== FIM DO CONTEXTO ===`
-  ].join('\n');
-}
-
-async function _jiaChamar(pergunta) {
-  const key = J.gemini || J.oficina?.apiKeys?.gemini || J.oficina?.geminiKey || null;
-  const ctx = _buildContextoIA();
-
-  _jiaAddMsg('user', pergunta);
-  const lidDiv = _jiaAddMsg('bot', '<span class="j-spinner"></span> Processando...');
-
-  if (!key) {
-    lidDiv.innerHTML = `<strong>thIAguinho:</strong> ⚠ Chave Gemini não configurada. Vá em Configurações → API Keys → Gemini e adicione sua chave para ativar a IA.`;
-    return;
-  }
-
-  try {
-    const msgs = _jiaHist.map(h=>({role:h.r==='user'?'user':'model',parts:[{text:h.t}]}));
-    const sysPrompt = `Você é o thIAguinho, assistente administrativo da oficina ${J.tnome||''}. 
-REGRAS ABSOLUTAS:
-1. Responda APENAS com base nos dados reais do sistema fornecidos abaixo. NUNCA invente valores, nomes, datas ou informações.
-2. Se a informação não estiver nos dados, diga "Não encontrei essa informação no sistema." Não suponha.
-3. Seja direto, objetivo e use formatação clara (listas quando necessário).
-4. Para perguntas financeiras, use APENAS os dados do campo FINANCEIRO.
-5. Para histórico de veículos, use APENAS os dados do campo ORDENS DE SERVIÇO.
-6. Para salários e comissões, use APENAS os dados do campo EQUIPE.
-
-${ctx}`;
-
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        contents: msgs,
-        systemInstruction: { parts: [{ text: sysPrompt }] }
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
-    const resp = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!resp) throw new Error('Resposta vazia da IA.');
-    _jiaHist.push({r:'bot', t:resp});
-    lidDiv.innerHTML = `<strong>thIAguinho:</strong> ${resp.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}`;
-  } catch(e) {
-    lidDiv.innerHTML = `<strong>thIAguinho:</strong> ❌ Erro: ${e.message}`;
-  }
-}
-
 function _jiaAddMsg(tipo, html) {
   const c = document.getElementById('iaMsgs'); if(!c) return {innerHTML:''};
   const d = document.createElement('div');
   d.className = `ia-msg ${tipo==='user'?'user':'bot'}`;
-  d.innerHTML = tipo==='user' ? `<strong>Você:</strong> ${html}` : html;
+  d.innerHTML = tipo==='user' ? `<strong>Voce:</strong> ${html}` : html;
   c.appendChild(d);
   c.scrollTop = c.scrollHeight;
-  _jiaHist.push({r:tipo, t:html.replace(/<[^>]*>/g,'')});
+  _jiaHist.push({r:tipo, t:String(html).replace(/<[^>]*>/g,'')});
   return d;
 }
-
+async function _jiaChamar(pergunta) {
+  _jiaAddMsg('user', pergunta);
+  const lidDiv = _jiaAddMsg('bot', '<strong>thIAguinho:</strong> <span class="j-spinner"></span> Consultando dados internos...');
+  try {
+    if (typeof window.thiaCarregarCerebroGlobal === 'function') await window.thiaCarregarCerebroGlobal();
+    const resp = typeof window.thiaResponderLocal === 'function'
+      ? window.thiaResponderLocal(pergunta, { perfil:'jarvis' })
+      : 'Motor interno indisponivel nesta tela.';
+    _jiaHist.push({r:'bot', t:String(resp).replace(/<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'')});
+    lidDiv.innerHTML = `<strong>thIAguinho:</strong> ${resp}`;
+  } catch(e) {
+    lidDiv.innerHTML = `<strong>thIAguinho:</strong> Nao consegui cruzar os dados internos: ${e.message || e}`;
+  }
+}
 window.iaPerguntar = function() {
   const inp = document.getElementById('iaInput');
   const msg = inp?.value?.trim();
@@ -3680,20 +3936,13 @@ window.iaPerguntar = function() {
   inp.value = '';
   _jiaChamar(msg);
 };
-
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('iaInput')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') window.iaPerguntar();
   });
 });
-
-window.iaAnalisarDRE = function() {
-  _jiaChamar('Analise o DRE do mês atual: receitas, despesas, saldo, e me diga se está saudável ou se há alertas.');
-};
-
-window.iaAnalisarEstoque = function() {
-  _jiaChamar('Analise o estoque atual: quais itens estão abaixo do mínimo, quais precisam ser comprados urgente, e o total em estoque.');
-};
+window.iaAnalisarDRE = function() { _jiaChamar('Analise o financeiro atual e aponte vencidos, riscos e prioridades.'); };
+window.iaAnalisarEstoque = function() { _jiaChamar('Quais pecas estao em estoque critico e precisam de reposicao?'); };
 </script>
 <script src="js/fiscal.js"></script>
 <script src="js/financeiro.js"></script>
@@ -3701,8 +3950,10 @@ window.iaAnalisarEstoque = function() {
 <script src="js/os-utils.js"></script>
 <script src="js/os.js"></script>
 <script src="js/cotacoes.js"></script>
+<script src="js/valoria-integracao.js"></script>
 <script src="js/assinatura-os.js"></script>
 <script src="js/ia.js"></script>
+<script src="js/ia-externa.js"></script>
 <script src="js/tabela-tempa.js"></script>
 <script src="js/exportar-pmsp.js"></script>
 
@@ -3711,5 +3962,306 @@ window.iaAnalisarEstoque = function() {
 <script src="js/theme.js"></script>
 <script src="js/hardening-comercial.js"></script>
 <script src="js/uix-theme-fix.js"></script>
+<script src="js/hardening-operacional-20260515.js"></script>
+<script src="js/operacional-cadastros-nf-fix-20260518.js"></script>
+
+
+<script>
+/* =====================================================================
+   JARVIS SAFE BRIDGE v4 — camada antirregressão NÃO INVASIVA
+   Base preservada: jarvis(31).html
+   Objetivo:
+   1) não travar bootstrap/login/Firebase;
+   2) adicionar busca de peças/serviços dentro da O.S. sem mexer no HTML original;
+   3) antes de salvar/exportar, sincronizar metadados visíveis da Tabela Tempária;
+   4) se o motor de IA externo falhar, oferecer contexto local real sem apagar o motor novo.
+   ===================================================================== */
+(function(){
+  'use strict';
+  if (window.__JARVIS_SAFE_BRIDGE_V4__) return;
+  window.__JARVIS_SAFE_BRIDGE_V4__ = true;
+
+  function log(){ try { console.log.apply(console, ['[Jarvis SafeBridge v4]'].concat([].slice.call(arguments))); } catch(e){} }
+  function warn(){ try { console.warn.apply(console, ['[Jarvis SafeBridge v4]'].concat([].slice.call(arguments))); } catch(e){} }
+  function byId(id){ return document.getElementById(id); }
+  function val(el){
+    try{
+      if (!el) return '';
+      if (el.tagName === 'SELECT') {
+        var opt = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+        return String(el.value || (opt ? opt.textContent : '') || '').trim();
+      }
+      return String(el.value != null ? el.value : (el.textContent || '')).trim();
+    } catch(e){ return ''; }
+  }
+  function norm(v){
+    return String(v == null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
+  }
+  function parseNum(v){
+    var s = String(v == null ? '' : v).trim();
+    if (!s) return 0;
+    s = s.replace(/R\$|\s/g,'');
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g,'').replace(',','.');
+    var n = parseFloat(s.replace(/[^0-9.\-]/g,''));
+    return isFinite(n) ? n : 0;
+  }
+  function money(n){
+    n = parseNum(n);
+    return n ? n.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : '';
+  }
+
+  function injectCSS(){
+    if (byId('jarvis-safe-bridge-v4-css')) return;
+    var css = document.createElement('style');
+    css.id = 'jarvis-safe-bridge-v4-css';
+    css.textContent = `
+      #jarvisOsSearchV4{display:block;margin:0 0 14px;padding:12px;border:1px solid var(--border2);background:rgba(0,212,255,.045);border-radius:5px;position:relative;z-index:5;}
+      #jarvisOsSearchV4 .josv4-title{font-family:var(--fm);font-size:.68rem;letter-spacing:1.5px;color:var(--cyan);font-weight:700;text-transform:uppercase;margin-bottom:5px;}
+      #jarvisOsSearchV4 .josv4-help{font-size:.72rem;color:var(--muted2);margin-bottom:9px;line-height:1.35;}
+      #jarvisOsSearchV4 .josv4-row{display:flex;gap:8px;align-items:center;}
+      #jarvisOsSearchInputV4{flex:1;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:10px 12px;font-family:var(--ff);font-size:.88rem;outline:none;min-width:0;}
+      #jarvisOsSearchInputV4:focus{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(0,212,255,.08);}
+      #jarvisOsSearchResultsV4{display:none;margin-top:8px;border:1px solid rgba(0,212,255,.20);border-radius:4px;background:var(--surf);max-height:260px;overflow:auto;box-shadow:0 10px 22px rgba(0,0,0,.28);}
+      #jarvisOsSearchResultsV4.open{display:block;}
+      .josv4-res{width:100%;display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;text-align:left;padding:9px 10px;background:transparent;border:0;border-bottom:1px solid rgba(0,212,255,.07);color:var(--text);cursor:pointer;font-family:var(--ff);}
+      .josv4-res:hover,.josv4-res.active{background:rgba(0,212,255,.09);}
+      .josv4-tag{font-family:var(--fm);font-size:.58rem;letter-spacing:1px;color:var(--cyan);border:1px solid rgba(0,212,255,.22);border-radius:10px;padding:2px 7px;white-space:nowrap;}
+      .josv4-main{min-width:0;}
+      .josv4-main strong{display:block;font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .josv4-main small{display:block;color:var(--muted2);font-size:.68rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .josv4-val{font-family:var(--fm);font-size:.66rem;color:var(--success);white-space:nowrap;}
+      .josv4-empty{padding:10px;color:var(--warn);font-family:var(--fm);font-size:.68rem;}
+      .josv4-highlight{outline:2px solid var(--cyan)!important;box-shadow:0 0 0 4px rgba(0,212,255,.14),0 10px 26px rgba(0,0,0,.28)!important;position:relative;z-index:20;}
+      @media(max-width:768px){#jarvisOsSearchV4{padding:10px;margin-bottom:12px;}#jarvisOsSearchV4 .josv4-row{flex-direction:column;align-items:stretch;}#jarvisOsSearchV4 .btn-ghost{width:100%;}.josv4-res{grid-template-columns:1fr;}.josv4-tag,.josv4-val{justify-self:start;}}
+    `;
+    document.head.appendChild(css);
+  }
+
+  function rowText(row){
+    if (!row) return '';
+    var parts = [row.textContent || ''];
+    try {
+      Array.prototype.forEach.call(row.querySelectorAll('input,select,textarea,button,[data-codigo],[data-desc],[data-descricao]'), function(el){
+        parts.push(val(el));
+        if (el.tagName === 'SELECT' && el.options && el.selectedIndex >= 0) parts.push(el.options[el.selectedIndex].textContent || '');
+        Array.prototype.forEach.call(el.attributes || [], function(a){ if (/^(data-|name|id|title|aria-label|placeholder|class)$/i.test(a.name)) parts.push(a.value || ''); });
+      });
+      Array.prototype.forEach.call(row.attributes || [], function(a){ if (/^data-/i.test(a.name)) parts.push(a.value || ''); });
+    } catch(e) {}
+    return parts.join(' ');
+  }
+  function firstVal(row, selectors){
+    for (var i=0;i<selectors.length;i++){
+      var el = row && row.querySelector(selectors[i]);
+      var v = val(el);
+      if (v) return v;
+    }
+    return '';
+  }
+  function collectItems(){
+    var items = [];
+    var serv = byId('containerServicosOS');
+    var pec = byId('containerPecasOS');
+    if (serv) Array.prototype.forEach.call(serv.children || [], function(row, idx){
+      if (!row || row.nodeType !== 1) return;
+      var desc = firstVal(row, ['.serv-desc','textarea[name*=desc]','textarea','input[name*=desc]','input[type=text]']) || 'Serviço sem descrição';
+      var cod = firstVal(row, ['.serv-codigo','.serv-codigo-tabela','.codigoTabela','[data-codigo]','input[name*=codigo]','input[id*=codigo]']) || row.dataset.codigoTabela || row.dataset.codigo || '';
+      var sistema = firstVal(row, ['.serv-secao-hora','.serv-sistema','.serv-sistema-tabela','select[name*=sistema]','input[name*=sistema]']) || row.dataset.sistemaTabela || row.dataset.secaoHora || '';
+      var valor = firstVal(row, ['.serv-valor','input[name*=valor]','input[id*=valor]','input[type=number]']);
+      items.push({tipo:'SERVIÇO', row:row, idx:idx, titulo:desc, detalhe:[cod && ('Cód. '+cod), sistema && ('Sistema '+sistema)].filter(Boolean).join(' • '), valor:money(valor), hay:norm(['serviço servico',desc,cod,sistema,valor,rowText(row)].join(' '))});
+    });
+    if (pec) Array.prototype.forEach.call(pec.children || [], function(row, idx){
+      if (!row || row.nodeType !== 1) return;
+      var desc = firstVal(row, ['.peca-desc-livre','.peca-sel','select','textarea','input[name*=desc]','input[type=text]']) || 'Peça sem descrição';
+      var cod = firstVal(row, ['.peca-codigo','input[name*=codigo]','input[id*=codigo]','[data-codigo]']) || row.dataset.codigo || row.dataset.codigoTabela || '';
+      var qtd = firstVal(row, ['.peca-qtd','input[name*=qtd]','input[type=number]']);
+      var venda = firstVal(row, ['.peca-venda','input[name*=venda]','input[name*=valor]']);
+      items.push({tipo:'PEÇA', row:row, idx:idx, titulo:desc, detalhe:[cod && ('Cód. '+cod), qtd && ('Qtd. '+qtd)].filter(Boolean).join(' • '), valor:money(venda), hay:norm(['peça peca produto estoque',desc,cod,qtd,venda,rowText(row)].join(' '))});
+    });
+    return items;
+  }
+
+  var currentResults = [];
+  var activeIdx = 0;
+  function renderResults(list, q){
+    var box = byId('jarvisOsSearchResultsV4');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!String(q||'').trim()) { box.classList.remove('open'); return; }
+    box.classList.add('open');
+    if (!list.length) { box.innerHTML = '<div class="josv4-empty">Nenhum serviço ou peça encontrado nesta O.S.</div>'; return; }
+    list.slice(0,50).forEach(function(it, i){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'josv4-res' + (i === activeIdx ? ' active' : '');
+      b.innerHTML = '<span class="josv4-tag"></span><span class="josv4-main"><strong></strong><small></small></span><span class="josv4-val"></span>';
+      b.querySelector('.josv4-tag').textContent = it.tipo;
+      b.querySelector('strong').textContent = it.titulo;
+      b.querySelector('small').textContent = it.detalhe || 'Toque para ir até o item';
+      b.querySelector('.josv4-val').textContent = it.valor || 'IR';
+      b.onclick = function(){ goToItem(it); };
+      box.appendChild(b);
+    });
+  }
+  function scoreItem(it, terms){
+    var s = 0;
+    terms.forEach(function(t){
+      if (!t) return;
+      if (norm(it.titulo).indexOf(t) >= 0) s += 12;
+      if (norm(it.detalhe).indexOf(t) >= 0) s += 8;
+      if (it.hay.indexOf(t) >= 0) s += 3;
+    });
+    return s;
+  }
+  window.jarvisBuscarItemOSV4 = function(q){
+    try{
+      var nq = norm(q);
+      activeIdx = 0;
+      if (!nq) { currentResults = []; renderResults([], ''); return []; }
+      var terms = nq.split(' ').filter(Boolean);
+      currentResults = collectItems().map(function(it){ return {it:it, score:scoreItem(it, terms)}; })
+        .filter(function(x){ return x.score > 0 || terms.every(function(t){ return x.it.hay.indexOf(t) >= 0; }); })
+        .sort(function(a,b){ return b.score - a.score || a.it.idx - b.it.idx; })
+        .map(function(x){ return x.it; });
+      renderResults(currentResults, q);
+      return currentResults;
+    } catch(e){ warn('busca falhou sem interromper sistema:', e); return []; }
+  };
+  window.jarvisBuscaItemOSKeyV4 = function(ev){
+    try{
+      var max = currentResults.length;
+      if (ev.key === 'ArrowDown' && max) { ev.preventDefault(); activeIdx = Math.min(max-1, activeIdx+1); renderResults(currentResults, ev.target.value); }
+      if (ev.key === 'ArrowUp' && max) { ev.preventDefault(); activeIdx = Math.max(0, activeIdx-1); renderResults(currentResults, ev.target.value); }
+      if (ev.key === 'Enter' && max) { ev.preventDefault(); goToItem(currentResults[activeIdx] || currentResults[0]); }
+      if (ev.key === 'Escape') window.jarvisLimparBuscaItemOSV4();
+    } catch(e){}
+  };
+  window.jarvisLimparBuscaItemOSV4 = function(){
+    var inp = byId('jarvisOsSearchInputV4'); if (inp) inp.value = '';
+    currentResults = []; activeIdx = 0;
+    var box = byId('jarvisOsSearchResultsV4'); if (box) { box.innerHTML=''; box.classList.remove('open'); }
+    document.querySelectorAll('.josv4-highlight').forEach(function(el){ el.classList.remove('josv4-highlight'); });
+  };
+  function goToItem(it){
+    if (!it || !it.row) return;
+    try{
+      document.querySelectorAll('.josv4-highlight').forEach(function(el){ el.classList.remove('josv4-highlight'); });
+      it.row.classList.add('josv4-highlight');
+      it.row.scrollIntoView({behavior:'smooth', block:'center', inline:'nearest'});
+      var focus = it.row.querySelector('input,select,textarea,button');
+      setTimeout(function(){ try{ if (focus && focus.focus) focus.focus({preventScroll:true}); }catch(e){} }, 450);
+      setTimeout(function(){ try{ it.row.classList.remove('josv4-highlight'); }catch(e){} }, 3500);
+    } catch(e){ try { it.row.scrollIntoView(); } catch(_){} }
+  }
+  function ensureSearchBox(){
+    try{
+      injectCSS();
+      if (byId('jarvisOsSearchV4')) return;
+      var tab = byId('tabOS1');
+      if (!tab) return;
+      var box = document.createElement('div');
+      box.id = 'jarvisOsSearchV4';
+      box.innerHTML = '<div class="josv4-title">🔎 Pesquisar na O.S. — peças e serviços lançados</div>'+
+        '<div class="josv4-help">Digite nome, código interno, sistema, peça, serviço ou valor. Ao tocar no resultado, a tela vai direto para o item.</div>'+
+        '<div class="josv4-row"><input id="jarvisOsSearchInputV4" type="search" placeholder="Ex: pastilha, óleo, suspensão, 0561, freio..." autocomplete="off"><button type="button" class="btn-ghost" id="jarvisOsSearchClearV4">LIMPAR</button></div>'+
+        '<div id="jarvisOsSearchResultsV4"></div>';
+      var anchor = tab.firstElementChild;
+      if (anchor) tab.insertBefore(box, anchor.nextSibling); else tab.appendChild(box);
+      var inp = byId('jarvisOsSearchInputV4');
+      if (inp) {
+        inp.addEventListener('input', function(){ window.jarvisBuscarItemOSV4(this.value); });
+        inp.addEventListener('keydown', window.jarvisBuscaItemOSKeyV4);
+      }
+      var clear = byId('jarvisOsSearchClearV4');
+      if (clear) clear.addEventListener('click', window.jarvisLimparBuscaItemOSV4);
+      log('busca interna instalada');
+    } catch(e){ warn('não consegui instalar busca, sem travar sistema:', e); }
+  }
+
+  function readServicoRowsForMeta(){
+    var out = [];
+    var cont = byId('containerServicosOS');
+    if (!cont) return out;
+    Array.prototype.forEach.call(cont.children || [], function(row){
+      if (!row || row.nodeType !== 1) return;
+      var obj = {
+        desc: firstVal(row, ['.serv-desc','textarea','input[name*=desc]','input[type=text]']),
+        tempo: parseNum(firstVal(row, ['.serv-tempo','input[name*=tempo]','input[name*=hora]','input[type=number]'])),
+        valor: parseNum(firstVal(row, ['.serv-valor','input[name*=valor]'])),
+        codigoTabela: firstVal(row, ['.serv-codigo','.serv-codigo-tabela','.codigoTabela','input[name*=codigo]','input[id*=codigo]']) || row.dataset.codigoTabela || row.dataset.codigo || '',
+        sistemaTabela: firstVal(row, ['.serv-secao-hora','.serv-sistema','.serv-sistema-tabela','select[name*=sistema]','input[name*=sistema]']) || row.dataset.sistemaTabela || row.dataset.secaoHora || '',
+        tipoVeiculoTabela: firstVal(row, ['.serv-tipo-veiculo','.tipoVeiculoTabela','select[name*=tipo]','input[name*=tipo]']) || row.dataset.tipoVeiculoTabela || row.dataset.tipoVeiculo || ''
+      };
+      if (obj.desc || obj.codigoTabela || obj.sistemaTabela) out.push(obj);
+    });
+    return out;
+  }
+  window.jarvisPreservarTempaV4 = function(){
+    try{
+      var servs = readServicoRowsForMeta();
+      if (!servs.length) return servs;
+      var J = window.J || {};
+      var osId = val(byId('osId'));
+      var alvo = null;
+      if (osId && Array.isArray(J.os)) alvo = J.os.find(function(o){ return o && o.id === osId; });
+      if (alvo && Array.isArray(alvo.servicos)) {
+        alvo.servicos.forEach(function(s, i){
+          if (!s || !servs[i]) return;
+          ['codigoTabela','sistemaTabela','tipoVeiculoTabela'].forEach(function(k){ if (!s[k] && servs[i][k]) s[k] = servs[i][k]; });
+        });
+      }
+      window.__jarvisTempaSnapshotV4 = servs;
+      return servs;
+    } catch(e){ warn('preservação Tempária falhou sem interromper:', e); return []; }
+  };
+  function wrapFunction(name){
+    try{
+      var fn = window[name];
+      if (typeof fn !== 'function' || fn.__safeBridgeV4) return;
+      var wrapped = function(){
+        try { window.jarvisPreservarTempaV4(); } catch(e){}
+        return fn.apply(this, arguments);
+      };
+      wrapped.__safeBridgeV4 = true;
+      wrapped.__original = fn;
+      window[name] = wrapped;
+      log('wrapper instalado em', name);
+    } catch(e){ warn('wrapper falhou para '+name, e); }
+  }
+  function installWrappers(){
+    ['salvarOS','salvarOSContinuar','exportarOrcamentoPMSP','exportarOrcamentoPMSPItens'].forEach(wrapFunction);
+  }
+
+  function buildContextoLocal(){
+    try{
+      var J = window.J || {};
+      var hoje = new Date();
+      var mesAtual = hoje.toISOString().slice(0,7);
+      var osCtx = '';
+      (J.os || []).forEach(function(o){
+        var cli = (J.clientes||[]).find(function(c){return c.id===o.clienteId;}) || {};
+        var veic = (J.veiculos||[]).find(function(v){return v.id===o.veiculoId;}) || {};
+        var servs = (o.servicos||[]).map(function(s){return (s.desc||s.descricao||'?')+'('+((s.tempo||0))+'h R$'+(s.valor||0)+')';}).join(', ');
+        var pecas = (o.pecas||[]).map(function(p){return (p.desc||p.codigo||'?')+' x'+(p.qtd||1)+' R$'+(p.venda||0);}).join(', ');
+        osCtx += 'OS#'+String(o.id||'').slice(-6)+' | '+(o.status||'?')+' | Cli:'+(cli.nome||o.cliente||'?')+' | Veic:'+(veic.placa||o.placa||'?')+' '+(veic.modelo||o.veiculo||'')+' | KM:'+(o.km||'?')+' | Data:'+(o.data||'')+' | Total:R$'+(o.total||0)+' | Serviços:['+servs+'] | Peças:['+pecas+']\n';
+      });
+      var finMes = (J.financeiro||[]).filter(function(f){ return String(f.data||f.vencimento||'').indexOf(mesAtual) === 0; });
+      var rec = finMes.filter(function(f){return f.tipo==='receita'||f.tipo==='entrada';}).reduce(function(s,f){return s+parseNum(f.valor||0);},0);
+      var desp = finMes.filter(function(f){return f.tipo==='despesa'||f.tipo==='saida';}).reduce(function(s,f){return s+parseNum(f.valor||0);},0);
+      var estCrit = (J.estoque||[]).filter(function(p){return parseNum(p.qtd||0) <= parseNum(p.min||0);});
+      return ['=== CONTEXTO REAL DO SISTEMA thIAguinho ===','OFICINA: '+(J.tnome||'?')+' | USUÁRIO: '+(J.nome||'?'),'CLIENTES: '+((J.clientes||[]).length)+' | VEÍCULOS: '+((J.veiculos||[]).length),'=== ORDENS DE SERVIÇO ===', osCtx || 'Nenhuma OS cadastrada.','=== FINANCEIRO '+mesAtual+' ===','Receitas=R$'+rec.toFixed(2)+' Despesas=R$'+desp.toFixed(2)+' Saldo=R$'+(rec-desp).toFixed(2),'=== ESTOQUE ===','Itens: '+((J.estoque||[]).length)+' | Críticos: '+(estCrit.length ? estCrit.map(function(p){return (p.desc||p.codigo)+'('+p.qtd+'un)';}).join(', ') : 'Nenhum')].join('\n');
+    } catch(e){ return 'Contexto local indisponível: '+(e.message||e); }
+  }
+  if (typeof window._buildContextoIA !== 'function') window._buildContextoIA = buildContextoLocal;
+
+  function bootSafe(){
+    try { ensureSearchBox(); } catch(e){}
+    try { installWrappers(); } catch(e){}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootSafe); else bootSafe();
+  [300,800,1500,3000,6000].forEach(function(ms){ setTimeout(bootSafe, ms); });
+})();
+</script>
+
 </body>
 </html>

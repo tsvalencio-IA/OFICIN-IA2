@@ -239,6 +239,7 @@ body{background:var(--bg0);color:var(--text);font-family:var(--ff);min-height:10
         <button class="tab-btn" onclick="trocarTab('tChat',this)">💬 Chat <span class="tab-badge" id="chatBadge">0</span></button>
         <button class="tab-btn" onclick="trocarTab('tAgd',this)">📅 Agendar</button>
         <button class="tab-btn" onclick="trocarTab('tHist',this)">📜 Histórico</button>
+        <button class="tab-btn" data-module="clienteOficial,tabelaTempa" data-submodule="cliente.tabelaTempaOficial" id="tabTempaOficialBtn" onclick="trocarTab('tTempaOficial',this);renderTempaOficial()">Tabela Tempária</button>
       </div>
     </div>
 
@@ -252,6 +253,27 @@ body{background:var(--bg0);color:var(--text);font-family:var(--ff);min-height:10
           <table class="t">
             <thead><tr><th>Prefixo</th><th>Marca / Modelo</th><th>Placa</th><th>Patrimônio</th><th>KM</th></tr></thead>
             <tbody id="tbViat"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: TABELA TEMPÁRIA -->
+    <div class="tab-content" id="tTempaOficial" data-module="clienteOficial,tabelaTempa" data-submodule="cliente.tabelaTempaOficial">
+      <div style="background:var(--bg1);border:1px solid var(--border);border-radius:var(--rx);overflow:hidden;margin-bottom:14px">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-family:var(--disp);font-weight:700;font-size:1rem;color:var(--gov)">Tabela Tempária - Consulta do Fiscal</div>
+        <div style="padding:14px 18px;display:grid;grid-template-columns:minmax(220px,1fr) 150px;gap:10px;align-items:end">
+          <div>
+            <label style="display:block;font-family:var(--mono);font-size:.62rem;color:var(--muted);margin-bottom:4px">SERVIÇO, SISTEMA OU CÓDIGO</label>
+            <input class="j-input" id="tempaOficialBusca" placeholder="Ex.: ALM001, freio, suspensão..." oninput="renderTempaOficial()">
+          </div>
+          <button class="btn-gov" onclick="renderTempaOficial()">PESQUISAR</button>
+        </div>
+        <div id="tempaOficialStatus" style="padding:0 18px 10px;color:var(--muted);font-family:var(--mono);font-size:.66rem"></div>
+        <div style="overflow-x:auto">
+          <table class="t">
+            <thead><tr><th>Código Interno</th><th>SIAFÍSICO</th><th>Sistema</th><th>Operação / Serviço</th><th style="text-align:right">Tempo</th></tr></thead>
+            <tbody id="tempaOficialBody"><tr><td colspan="5" class="empty">Digite para pesquisar.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -334,11 +356,13 @@ body{background:var(--bg0);color:var(--text);font-family:var(--ff);min-height:10
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/config.js"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
 <script src="js/os-utils.js"></script>
+<script src="js/tabela-tempa.js"></script>
 <script>
 'use strict';
 const portalParams = new URLSearchParams(window.location.search);
-const _tenantSlug = portalParams.get('tenant') || portalParams.get('t') || null;
+const _tenantSlug = portalParams.get('tenant') || portalParams.get('t') || portalParams.get('oficina') || portalParams.get('slug') || null;
 if (!_tenantSlug) sessionStorage.removeItem('j_firebase_config');
 let db = window.initFirebase();
 let CLI = null, TID = null;
@@ -355,6 +379,45 @@ function _pick(...values){
     if(String(value).trim()!=='') return value;
   }
   return '';
+}
+function _normTempaOficial(v){
+  return String(v||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase().replace(/[^A-Z0-9]+/g,' ')
+    .trim();
+}
+function _codigoServicoOficial(s){
+  if(!s) return { interno:'', siafisico:'', item:null };
+  const itens = window._tabelaTempa?.dados?.itens || [];
+  const codigos = [
+    s.codigoInterno,
+    s.codigoTabela,
+    s.codigoSiafisico,
+    s.codigoSIAFISICO,
+    s.codSiafisico,
+    s.codigoTemparia,
+    s.codigo
+  ].map(v=>String(v||'').trim()).filter(Boolean);
+  const codigosNorm = new Set(codigos.map(_normTempaOficial).filter(Boolean));
+  let item = itens.find(it=>{
+    const ci=_normTempaOficial(it.codigoInterno);
+    const ct=_normTempaOficial(it.codigo);
+    return (ci && codigosNorm.has(ci)) || (ct && codigosNorm.has(ct));
+  });
+  if(!item){
+    const descNorm=_normTempaOficial([s.desc,s.descricao,s.servico].filter(Boolean).join(' '));
+    const sistemaNorm=_normTempaOficial(s.sistemaTabela||s.sistema||s.secaoHoraLabel||'');
+    item = itens.find(it=>{
+      const itemNorm=_normTempaOficial([it.operacao,it.item].filter(Boolean).join(' '));
+      const sistemaItem=_normTempaOficial(it.sistema||'');
+      return itemNorm && descNorm && (descNorm.includes(itemNorm) || itemNorm.includes(descNorm)) && (!sistemaNorm || !sistemaItem || sistemaNorm.includes(sistemaItem) || sistemaItem.includes(sistemaNorm));
+    });
+  }
+  const interno=String(s.codigoInterno||s.codigoInternoTempa||s.codigoTempaInterno||item?.codigoInterno||'').trim();
+  let siafisico=String(s.codigoTabela||s.codigoSiafisico||s.codigoSIAFISICO||s.codSiafisico||item?.codigo||'').trim();
+  const codigoSolto=String(s.codigo||'').trim();
+  if(!siafisico && codigoSolto && _normTempaOficial(codigoSolto)!==_normTempaOficial(interno)) siafisico=codigoSolto;
+  return { interno, siafisico, item };
 }
 function nBR(v){
   if(typeof v === 'number' && isFinite(v)) return v;
@@ -393,10 +456,14 @@ function _totalAprovadoOS(os){
 }
 function _resumoFinanceiroOS(os){
   const fin=_finOS(os);
-  const faturado=fin.reduce((s,f)=>s+nBR(f.valor),0)||nBR(os.totalFaturado||0);
+  const txtPgto=String([os.pgtoResumoCliente||'',os.pgtoForma||''].join(' ')).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const pagamentoAVista=/\b(pix|dinheiro|debito)\b/.test(txtPgto);
+  const faturadoBruto=fin.reduce((s,f)=>s+nBR(f.valor),0)||nBR(os.totalFaturado||0);
+  const faturado=(pagamentoAVista && os.totalFaturado!=null) ? nBR(os.totalFaturado||0) : faturadoBruto;
   const formas=[os.pgtoResumoCliente,os.pgtoForma,...fin.map(f=>f.pgtoResumo||f.pgto)].filter(Boolean);
   const forma=formas.find(Boolean)||'';
-  const vencs=fin.map(f=>f.venc||f.dataPgto||'').filter(Boolean).sort();
+  let vencs=fin.map(f=>f.venc||f.dataPgto||'').filter(Boolean).sort();
+  if(pagamentoAVista && vencs.length) vencs=[vencs[0]];
   return {orcamento:nBR(os.total||0), aprovado:_totalAprovadoOS(os), faturado, forma, vencs};
 }
 function _normSecao(txt){
@@ -466,7 +533,8 @@ function _resumoSecoesOS(os){
     out[secao].horas+=tempo;
     out[secao].total+=+(valorBruto*(1-descMO)).toFixed(2);
     out[secao].qtd+=1;
-    const codigo=String(s.codigoTabela||s.codigo||'').trim();
+    const codServico=_codigoServicoOficial(s);
+    const codigo=String(codServico.interno||codServico.siafisico||s.codigo||'').trim();
     const sistema=String(s.sistemaTabela||s.sistema||s.secaoHoraLabel||'').trim();
     const tipo=_tipoVeiculoServicoKPI(s,os);
     if(codigo) out[secao].codigos.add(codigo);
@@ -527,8 +595,24 @@ document.getElementById('loginInput').addEventListener('keydown',e=>{ if(e.key==
 
 (function carregarCredenciaisClienteOficial(){
   try{const s=JSON.parse(localStorage.getItem('thiaguinho_cliente_oficial_login')||'null');if(s){const l=document.getElementById('loginInput');const p=document.getElementById('pinInput');if(l&&s.login)l.value=s.login;if(p&&s.pin)p.value=s.pin;}}catch(e){}
+  try{const loginLink=portalParams.get('login')||portalParams.get('placa')||'';const l=document.getElementById('loginInput');if(l&&loginLink)l.value=loginLink;}catch(e){}
 })();
 function salvarCredenciaisClienteOficial(login,pin){try{localStorage.setItem('thiaguinho_cliente_oficial_login',JSON.stringify({login,pin,salvoEm:new Date().toISOString()}));}catch(e){}}
+
+async function _resolverOficinaPortalOficial(tenantRef){
+  const centralDb=window.initCentralFirebase?window.initCentralFirebase():db;
+  const raw=String(tenantRef||'').trim();
+  if(!raw) return null;
+  const direct=await centralDb.collection('oficinas').doc(raw).get();
+  if(direct.exists) return {id:direct.id,data:direct.data()};
+  for(const campo of ['slug','publicSlug','oficinaSlug']){
+    try{
+      const snap=await centralDb.collection('oficinas').where(campo,'==',raw).limit(1).get();
+      if(!snap.empty) return {id:snap.docs[0].id,data:snap.docs[0].data()};
+    }catch(e){}
+  }
+  return null;
+}
 
 async function doLogin(){
   await _tenantReady;
@@ -536,11 +620,14 @@ async function doLogin(){
   err.style.display='none';
   const login=(document.getElementById('loginInput').value||'').trim();
   const pin=(document.getElementById('pinInput').value||'').trim();
+  if(!_tenantSlug&&!TID){ err.textContent='⚠ Link incompleto: use o link oficial enviado pela oficina.'; err.style.display='block'; return; }
+  if(!TID){ err.textContent='⚠ Oficina não encontrada neste link.'; err.style.display='block'; return; }
+  if(_OFIC && _OFIC.modulos && _OFIC.modulos.clienteOficial === false){ err.textContent='⚠ Portal de cliente oficial indisponível para esta oficina.'; err.style.display='block'; return; }
   if(!login||!pin){ err.textContent='⚠ Preencha login e PIN.'; err.style.display='block'; return; }
   const btn=document.getElementById('btnLogin');
   btn.innerHTML='<span class="spinner"></span> VALIDANDO...'; btn.disabled=true;
   try{
-    const snap=await db.collection('clientes').where('login','==',login).get();
+    const snap=await db.collection('clientes').where('tenantId','==',TID).where('login','==',login).get();
     if(snap.empty){ throw new Error('Login ou PIN incorretos.'); }
     const matched=snap.docs.find(d=>{const x=d.data(); return x.pin===pin || x.senha===pin || x.password===pin;});
     if(!matched){ throw new Error('Login ou PIN incorretos.'); }
@@ -569,11 +656,11 @@ async function _carregarOficina(){
 
 async function _prepararTenantPortal(tenantId){
   try{
-    const centralDb=window.initCentralFirebase?window.initCentralFirebase():db;
-    const snap=await centralDb.collection('oficinas').doc(tenantId).get();
-    if(!snap.exists) return;
-    _OFIC=snap.data();
-    TID=tenantId;
+    const found=await _resolverOficinaPortalOficial(tenantId);
+    if(!found) return;
+    _OFIC={id:found.id,...found.data};
+    TID=found.id;
+    try{sessionStorage.setItem('j_oficina',JSON.stringify(_OFIC));}catch(e){}
     if(_OFIC.firebaseConfig?.projectId&&_OFIC.firebaseConfig?.apiKey){
       sessionStorage.setItem('j_firebase_config',JSON.stringify(_OFIC.firebaseConfig));
       db=window.initFirebase();
@@ -584,6 +671,8 @@ async function _prepararTenantPortal(tenantId){
 async function inicializar(){
   document.getElementById('loginOverlay').style.display='none';
   document.getElementById('app').style.display='block';
+  try{sessionStorage.setItem('j_oficina',JSON.stringify(_OFIC||{}));}catch(e){}
+  if(typeof window.thiaApplyModuleVisibility==='function') window.thiaApplyModuleVisibility(document);
   document.getElementById('hdrUnidade').textContent=(CLI.govUnidade||CLI.nome||'—').toUpperCase();
   document.getElementById('hdrSub').textContent=`CNPJ: ${CLI.doc||'—'} · Fiscal: ${CLI.govFiscal||'—'}`;
   _ligarListeners();
@@ -604,6 +693,9 @@ function _ligarListeners(){
     _OS=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((b.updatedAt||'')>(a.updatedAt||''))?1:-1);
     _renderStats();
     _renderOS();
+    if(typeof window.tempaCarregar==='function'){
+      window.tempaCarregar().then(()=>{ _renderOS(); _renderStats(); }).catch(()=>{});
+    }
     _renderHist();
   });
 
@@ -742,8 +834,15 @@ function _buildOSCard(os){
     const tipoVeic=_tipoVeiculoServicoKPI(s,os);
     const vf=+(vBruto*(1-pctDescMO)).toFixed(2);
     totalMO+=vf; totalTMO+=t;
+    const codServico=_codigoServicoOficial(s);
+    const codigoHtml=codServico.interno
+      ? `<code style="font-size:.7rem;color:var(--gov)">CÓD. INTERNO: ${esc(codServico.interno)}</code> `
+      : (codServico.siafisico||s.codigo?`<code style="font-size:.7rem;color:var(--gov)">CÓD.: ${esc(codServico.siafisico||s.codigo)}</code> `:'');
+    const metaCodigo=codServico.siafisico && (!codServico.interno || _normTempaOficial(codServico.siafisico)!==_normTempaOficial(codServico.interno))
+      ? `CÓD. SIAFÍSICO: ${esc(codServico.siafisico)} · `
+      : '';
     const riscado=pctDescMO>0?`<span style="color:var(--muted);text-decoration:line-through;font-size:.75rem">${moeda(vBruto)}</span> <span style="color:var(--ok);font-size:.7rem">-${(pctDescMO*100).toFixed(0)}%</span> `:'';
-    return `<div class="detalhe-row"><span>${s.codigoTabela||s.codigo?`<code style="font-size:.7rem;color:var(--gov)">${esc(s.codigoTabela||s.codigo)}</code> `:''}${esc(s.desc||'—')}${badgeAprovacao('servico-'+idx)}<br><small style="color:var(--muted)">${esc(secao)}${tipoVeic?` · Tipo veículo: ${esc(tipoVeic)}`:''}${t?` · ${String(t).replace('.',',')}h`:''}${valorHora?` · ${moeda(valorHora)}/h`:''}</small></span><span class="detalhe-val" style="text-align:right">${riscado}${moeda(vf)}</span></div>`;
+    return `<div class="detalhe-row"><span>${codigoHtml}${esc(s.desc||'—')}${badgeAprovacao('servico-'+idx)}<br><small style="color:var(--muted)">${metaCodigo}${esc(secao)}${tipoVeic?` · Tipo veículo: ${esc(tipoVeic)}`:''}${t?` · ${String(t).replace('.',',')}h`:''}${valorHora?` · ${moeda(valorHora)}/h`:''}</small></span><span class="detalhe-val" style="text-align:right">${riscado}${moeda(vf)}</span></div>`;
   }).join('');
 
   const lsPec=(os.pecas||[]).map((p,idx)=>{
@@ -764,10 +863,17 @@ function _buildOSCard(os){
 
   // Linha do tempo: apenas mudanças de status (filtra logs de auditoria técnica)
   const tlFiltrado=(os.timeline||[]).filter(t=>{
+    if(t.tipo==='status_os'||t.visivelCliente===true) return true;
     const a=(t.acao||'').toLowerCase();
     return a.includes('status alterado')||a.includes('abriu a o.s')||a.includes('aprovou')||a.includes('recusou')||a.includes('entregue')||a.includes('aprovado');
   });
   const tlParaExibir=tlFiltrado.length>0?tlFiltrado:(os.timeline||[]).filter(t=>(t.acao||'').toLowerCase().includes('status'));
+  const textoTimelineOficial=t=>{
+    if(t.tipo==='status_os'){
+      return `Status atualizado para ${String(t.statusNovo||'').replace('_',' ')} por ${t.user||t.usuario||'Sistema'}.`;
+    }
+    return (t.acao||'').replace(/^Status alterado para:\s*/i,'').replace(/^Abriu a O\.S\.\s*/i,'Entrada na oficina — ');
+  };
 
   const tlHtml=`<div class="timeline-box">
     <div class="tl-title">📍 Histórico de Status</div>
@@ -777,7 +883,7 @@ function _buildOSCard(os){
           <div class="tl-meta">
             <span class="tl-date">${new Date(t.dt).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
           </div>
-          <div class="tl-action">${esc((t.acao||'').replace(/^Status alterado para:\s*/i,'').replace(/^Abriu a O\.S\.\s*/i,'Entrada na oficina — '))}</div>
+          <div class="tl-action">${esc(textoTimelineOficial(t))}</div>
         </div>`).join('')
       :'<div style="color:var(--muted);font-size:.8rem;text-align:center;padding:12px">Nenhum registro de status ainda.</div>'}
     </div>
@@ -944,7 +1050,7 @@ function _renderChat(msgs){
   ct.innerHTML=msgs.map(m=>{
     const t=m.ts?new Date(m.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
     const dir=m.sender==='cliente'?'out':'inc';
-    const author=m.sender==='cliente'?'Você':(_OFIC?.nomeFantasia||'Oficina');
+    const author=m.sender==='cliente'?'Você':(m.autorTipo==='equipe'&&m.autorNome?`${m.autorNome}${m.autorCargo?' ('+m.autorCargo+')':''}`:(_OFIC?.nomeFantasia||'Oficina'));
     return `<div class="chat-msg ${dir}"><div class="chat-author">${_escChat(author)}</div>${_formatMidia(m.msg)}<div class="chat-time">${t}</div></div>`;
   }).join('');
   ct.scrollTop=ct.scrollHeight;
@@ -1054,6 +1160,49 @@ function _renderAgd(list){
     </div>`;
   }).join('');
   el.innerHTML=`<div style="font-family:var(--disp);font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:14px;margin-top:24px">Meus Agendamentos</div>${html}`;
+}
+
+function tempaOficialLiberada(){
+  const modOk = (!window.thiaModEnabled || (window.thiaModEnabled('clienteOficial') && window.thiaModEnabled('tabelaTempa')));
+  const subOk = (!window.thiaSubEnabled || window.thiaSubEnabled('cliente.tabelaTempaOficial'));
+  return !!(modOk && subOk);
+}
+
+async function renderTempaOficial(){
+  const tbody=document.getElementById('tempaOficialBody');
+  const status=document.getElementById('tempaOficialStatus');
+  if(!tbody) return;
+  if(!tempaOficialLiberada()){
+    tbody.innerHTML='<tr><td colspan="5" class="empty">Consulta não liberada para este portal.</td></tr>';
+    if(status) status.textContent='';
+    return;
+  }
+  try{
+    if(typeof window.tempaCarregar==='function') await window.tempaCarregar();
+  }catch(e){
+    tbody.innerHTML='<tr><td colspan="5" class="empty">Não foi possível carregar a Tabela Tempária.</td></tr>';
+    if(status) status.textContent=e.message||String(e);
+    return;
+  }
+  const termo=(document.getElementById('tempaOficialBusca')?.value||'').trim();
+  const lista=termo && typeof window.tempaBuscarPorTexto==='function'
+    ? window.tempaBuscarPorTexto(termo,{limite:120})
+    : (window._tabelaTempa?.dados?.itens||[]).slice(0,50);
+  if(status) status.textContent=termo ? `${lista.length} resultado(s). Consulta somente leitura.` : 'Mostrando primeiros 50 itens. Digite para filtrar.';
+  if(!lista.length){
+    tbody.innerHTML='<tr><td colspan="5" class="empty">Nenhum item encontrado.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=lista.map(it=>{
+    const tempo=Number(it.tempo||0);
+    return `<tr>
+      <td><code style="font-size:.7rem;color:var(--gov)">${esc(it.codigoInterno||'-')}</code></td>
+      <td><code style="font-size:.7rem;color:var(--muted)">${esc(it.codigo||'-')}</code></td>
+      <td>${esc(it.sistema||'-')}</td>
+      <td><b>${esc(it.operacao||'')}</b> ${esc(it.item||'')}</td>
+      <td style="text-align:right;font-family:var(--mono);color:var(--ok)">${tempo.toFixed(2).replace('.',',')}h</td>
+    </tr>`;
+  }).join('');
 }
 
 // ── TABS ──────────────────────────────────────────────────────

@@ -1,17 +1,22 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Cotação de Peças - thIAguinho</title>
   <meta name="theme-color" content="#0b1220">
+  <script>(function(){try{var t=localStorage.getItem('thiaguinho_theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();</script>
   <style>
     :root{
       --bg:#101722;--panel:#172233;--panel2:#213047;--text:#edf3f8;--muted:#a7b4c2;
       --line:rgba(210,222,232,.16);--ok:#6dbb8d;--warn:#d8ad5f;--danger:#df6f7b;--brand:#7fb7d6;
       --font:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--mono:"JetBrains Mono",Consolas,monospace;
     }
-    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#101722,#141f2e);color:var(--text);font-family:var(--font);min-height:100vh}
+    :root[data-theme="light"]{
+      --bg:#f6f8fb;--panel:#ffffff;--panel2:#eef3f7;--text:#182536;--muted:#637588;
+      --line:rgba(24,37,54,.14);--ok:#2f7d55;--warn:#946b2d;--danger:#a3434d;--brand:#2f6f8f;
+    }
+    *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,var(--bg),color-mix(in srgb,var(--bg) 88%,#000 12%));color:var(--text);font-family:var(--font);min-height:100vh}
     .wrap{width:min(980px,100%);margin:0 auto;padding:18px}
     header{padding:18px 0 12px;border-bottom:1px solid var(--line);margin-bottom:16px}
     .brand{font-family:var(--mono);font-size:.72rem;color:var(--brand);font-weight:800;letter-spacing:1px;text-transform:uppercase}
@@ -20,7 +25,8 @@
     .card{background:rgba(17,26,46,.94);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 16px 42px rgba(0,0,0,.28)}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
     label{display:block;font-family:var(--mono);font-size:.68rem;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.7px;margin:0 0 5px}
-    input,select,textarea{width:100%;background:#111b29;border:1px solid var(--line);border-radius:5px;color:var(--text);padding:11px;font:inherit;min-height:44px}
+    input,select,textarea{width:100%;background:color-mix(in srgb,var(--panel) 86%,#000 14%);border:1px solid var(--line);border-radius:5px;color:var(--text);padding:11px;font:inherit;min-height:44px}
+    :root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{background:#fff;color:#182536}
     textarea{resize:vertical;min-height:86px}
     input::placeholder,textarea::placeholder{color:#6f8199}
     .info{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-top:12px}
@@ -109,6 +115,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/tenant-modules.js"></script>
   <script src="js/cotacao-fornecedor.js"></script>
   <script src="js/uix-theme-fix.js"></script>
 </body>

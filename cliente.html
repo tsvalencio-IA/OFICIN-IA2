@@ -360,6 +360,7 @@ body { overflow-y: auto; background: #060A14; color: #E8F4FF; font-family: 'Exo 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/config.js?v=99"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
 <script src="js/os-utils.js"></script>
 <script>
 // ============================================================
@@ -367,7 +368,7 @@ body { overflow-y: auto; background: #060A14; color: #E8F4FF; font-family: 'Exo 
 // Powered by thIAguinho Soluções Digitais
 // ============================================================
 const params = new URLSearchParams(window.location.search);
-const _tenantSlug = params.get('tenant') || params.get('t') || null;
+const _tenantSlug = params.get('tenant') || params.get('t') || params.get('oficina') || params.get('slug') || null;
 if (!_tenantSlug) sessionStorage.removeItem('j_firebase_config');
 let db = window.initFirebase();
 let P = { clienteId: null, tenantId: null, cliente: null, oficina: null, veiculos: [], financeiro: [] };
@@ -390,16 +391,31 @@ function switchCliTab(tabId, btnEl) {
 
 const _tenantReady = _tenantSlug ? _carregarBrandTenant(_tenantSlug) : Promise.resolve();
 
+async function _resolverOficinaPortal(tenantRef) {
+  const centralDb = window.initCentralFirebase ? window.initCentralFirebase() : db;
+  const raw = String(tenantRef || '').trim();
+  if (!raw) return null;
+  const direct = await centralDb.collection('oficinas').doc(raw).get();
+  if (direct.exists) return { id: direct.id, data: direct.data() };
+  for (const campo of ['slug', 'publicSlug', 'oficinaSlug']) {
+    try {
+      const snap = await centralDb.collection('oficinas').where(campo, '==', raw).limit(1).get();
+      if (!snap.empty) return { id: snap.docs[0].id, data: snap.docs[0].data() };
+    } catch(e) {}
+  }
+  return null;
+}
+
 async function _carregarBrandTenant(tenantId) {
   try {
-    const centralDb = window.initCentralFirebase ? window.initCentralFirebase() : db;
-    const snap = await centralDb.collection('oficinas').doc(tenantId).get();
-    if (!snap.exists) return;
-    const d = snap.data();
+    const found = await _resolverOficinaPortal(tenantId);
+    if (!found) return;
+    const d = found.data;
     document.getElementById('portalOficinaName').textContent = d.nomeFantasia || 'Portal do Cliente';
     const logoL = (d.nomeFantasia||'J').charAt(0).toUpperCase();
     document.getElementById('portalLogoMark').textContent = logoL; document.getElementById('portalHdrMark').textContent  = logoL; document.getElementById('portalHdrName').textContent  = d.nomeFantasia || 'Oficina Parceira';
-    P.tenantId = tenantId; P.oficina  = d;
+    P.tenantId = found.id; P.oficina  = { id: found.id, ...d };
+    try { sessionStorage.setItem('j_oficina', JSON.stringify(P.oficina)); } catch(e) {}
     if (d.firebaseConfig?.projectId && d.firebaseConfig?.apiKey) {
       sessionStorage.setItem('j_firebase_config', JSON.stringify(d.firebaseConfig));
       db = window.initFirebase();
@@ -422,6 +438,11 @@ document.getElementById('pLogin').addEventListener('keydown', e => { if (e.key =
     if(loginEl && salvo.login) loginEl.value = salvo.login;
     if(pinEl && salvo.pin) pinEl.value = salvo.pin;
   }catch(e){ console.warn('[Portal Cliente] não foi possível carregar credenciais locais', e); }
+  try{
+    const loginLink = params.get('login') || params.get('placa') || '';
+    const loginEl = document.getElementById('pLogin');
+    if(loginEl && loginLink) loginEl.value = loginLink;
+  }catch(e){}
 })();
 function salvarCredenciaisPortalCliente(login, pin){
   try{
@@ -437,6 +458,9 @@ async function portalLogin() {
   const err   = document.getElementById('portalLoginErr');
   err.style.display = 'none';
 
+  if (!_tenantSlug && !P.tenantId) { err.textContent = 'Link incompleto: use o link enviado pela oficina para evitar mistura de dados.'; err.style.display='block'; return; }
+  if (!P.tenantId) { err.textContent = 'Oficina não encontrada neste link. Peça um novo acesso.'; err.style.display='block'; return; }
+  if (P.oficina && P.oficina.modulos && P.oficina.modulos.crm === false) { err.textContent = 'Portal do cliente indisponível para esta oficina.'; err.style.display='block'; return; }
   if (!rawLogin || !pin) { err.textContent = 'Preencha usuário e PIN.'; err.style.display='block'; return; }
   const btn = document.getElementById('btnLoginBtn'); btn.innerHTML = '<span class="spinner"></span> VALIDANDO...'; btn.disabled = true;
 
@@ -479,7 +503,7 @@ async function portalLogin() {
     }
 
     if (!authSuccess) throw new Error('Usuário ou PIN incorretos. Verifique a placa e a senha enviada.');
-    if (!P.oficina && P.tenantId) { const ofSnap = await db.collection('oficinas').doc(P.tenantId).get(); if (ofSnap.exists) { P.oficina = ofSnap.data(); await _carregarBrandTenant(P.tenantId); } }
+    if (!P.oficina && P.tenantId) { await _carregarBrandTenant(P.tenantId); }
 
     document.getElementById('portalClienteNome').textContent = P.cliente?.nome || 'Olá, Cliente';
     salvarCredenciaisPortalCliente(rawLogin, pin);
@@ -530,14 +554,14 @@ function _iniciarPortalListeners() {
       db.collection('financeiro').where('tenantId', '==', P.tenantId).onSnapshot(snap => {
           const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           const placas = new Set(_osDoCliente.map(o=>(o.placa||'').toUpperCase().replace(/[^A-Z0-9]/g,'')).filter(Boolean));
-          const nomeCliente = (P.cliente?.nome||'').toLowerCase();
+          const osIds = new Set(_osDoCliente.map(o=>o.id).filter(Boolean));
           const finList = todos.filter(f => {
             if (f.tipo==='Saída'||f.tipo==='Saida'||f.isComissao) return false;
             if (f.vinculo && (f.vinculo.startsWith('F_')||f.vinculo.startsWith('E_'))) return false;
-            if (f.clienteId === P.clienteId) return true;
+            if (f.clienteId && f.clienteId === P.clienteId) return true;
+            if (f.osId && osIds.has(f.osId)) return true;
             const desc = (f.desc||'').toLowerCase();
             for (const p of placas) { if (p && desc.includes(p.toLowerCase())) return true; }
-            if (nomeCliente.length > 2 && desc.includes(nomeCliente.split(' ')[0])) return true;
             return false;
           }).sort((a,b)=>((b.venc||'')>(a.venc||''))?1:-1);
           P.financeiro = finList;
@@ -639,10 +663,18 @@ function _renderPortalOS(osList) {
     const orcAlerta = isOrcamento ? `<div class="alerta-orcamento"><div style="font-family:var(--ff-display);font-size:1.2rem;font-weight:700;color:var(--warn);margin-bottom:6px">Orçamento Disponível</div>${resumoValoresHTML}<div style="display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-success" style="flex:1;" onclick="_aprovarOrcamento('${os.id}')">✓ APROVAR</button><button class="btn btn-outline" style="flex:1;" onclick="_negociarOrcamento('${placaFormatada}')">💬 NEGOCIAR</button></div></div>` : '';
 
     const timelinePublica = (os.timeline || []).filter(t => {
+      if (t.tipo === 'status_os' || t.visivelCliente === true) return true;
       const acao = String(t.acao || '').toLowerCase();
       if (/interna|execu[cç][aã]o|pe[cç]as reais|financeiro|custo|margem|comiss|auditoria|estoque|nf\b|fornecedor/.test(acao)) return false;
       return /status|abriu|or[cç]amento|aprov|recus|pronto|entreg|cliente|ve[ií]culo/.test(acao);
     });
+    const textoTimelineCliente = tl => {
+      if (tl.tipo === 'status_os') {
+        const para = tl.statusNovo || '';
+        return `Status atualizado para ${para.replace('_', ' ')} por ${tl.user || tl.usuario || 'Sistema'}.`;
+      }
+      return String(tl.acao || '');
+    };
     const timelineHtml = `
       <div class="timeline-box">
         <div class="timeline-box-title">⏱️ Histórico de Atualizações</div>
@@ -653,7 +685,7 @@ function _renderPortalOS(osList) {
                 <span class="tl-date">${new Date(tl.dt).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</span>
                 <span class="tl-user">👤 ${tl.user || tl.usuario || 'Sistema'}</span>
               </div>
-              <div class="tl-action">${tl.acao}</div>
+              <div class="tl-action">${textoTimelineCliente(tl)}</div>
             </div>
           `).join('') : '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;">Nenhum registro de atividade ainda.</div>'}
         </div>
@@ -747,17 +779,39 @@ function _renderFinanceiro(finList) {
   // Agrupa recebimentos de cartão (que o cliente já quitou) para mostrar como 1 linha "PAGO"
   const docsClienteViu = [];
   const osQuitadasNoCartao = new Set();
+  const osQuitadasAVista = new Set();
+  const osDoCli = (window._osDoCliente || []);
+  const osById = new Map(osDoCli.map(os => [os.id, os]));
+  const pagamentoAVistaPortal = os => {
+    const txt = String([os?.pgtoResumoCliente || '', os?.pgtoForma || ''].join(' '))
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    return /\b(pix|dinheiro|debito)\b/.test(txt);
+  };
 
   // 1ª passagem: detecta OS quitadas no cartão (não aparecem na lista normal)
   finList.forEach(f => {
     if (f.aReceberDe === 'Operadora de Cartão' && f.osId && f.quitadoPeloCliente) {
       osQuitadasNoCartao.add(f.osId);
     }
+    const osRef = f.osId ? osById.get(f.osId) : null;
+    const pago = String(f.status || '').toLowerCase() === 'pago' || f.quitadoPeloCliente === true;
+    if (osRef && pagamentoAVistaPortal(osRef) && pago && f.tipo === 'Entrada') {
+      osQuitadasAVista.add(f.osId);
+    }
   });
 
   // 2ª passagem: monta lista de verdade
-  const osDoCli = (window._osDoCliente || []);
   osDoCli.forEach(os => {
+    if (osQuitadasAVista.has(os.id) && (os.totalFaturado || os.totalAprovado || os.total) > 0) {
+      docsClienteViu.push({
+        desc: `O.S. ${os.placa || ''} - ${os.desc || 'Servico'}`,
+        valor: os.totalFaturado || os.totalAprovado || os.total,
+        status: 'Pago',
+        pgtoResumo: os.pgtoResumoCliente || os.pgtoForma || 'Pagamento a vista',
+        dataPgto: os.pgtoData,
+        _fromOS: true
+      });
+    }
     if (osQuitadasNoCartao.has(os.id) && (os.totalAprovado || os.total) > 0) {
       // OS paga no cartão — mostra como 1 linha quitada
       docsClienteViu.push({
@@ -773,6 +827,7 @@ function _renderFinanceiro(finList) {
   // Adiciona os lançamentos "normais" (não-cartão)
   docsCli.forEach(f => {
     if (f.osId && osQuitadasNoCartao.has(f.osId)) return; // já contabilizado acima
+    if (f.osId && osQuitadasAVista.has(f.osId)) return; // PIX/Dinheiro/Debito a vista vira 1 linha no portal
     docsClienteViu.push(f);
   });
 
@@ -1057,7 +1112,7 @@ function _renderChat(msgs) {
   container.innerHTML = msgs.map(m => {
     const t = m.ts ? new Date(m.ts).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }) : '';
     const dir = m.sender === 'cliente' ? 'outgoing' : 'incoming';
-    const author = m.sender === 'cliente' ? 'Você' : (P.oficina?.nomeFantasia || 'Oficina');
+    const author = m.sender === 'cliente' ? 'Você' : (m.autorTipo === 'equipe' && m.autorNome ? `${m.autorNome}${m.autorCargo ? ' (' + m.autorCargo + ')' : ''}` : (P.oficina?.nomeFantasia || 'Oficina'));
     return `<div class="chat-msg ${dir}"><div class="chat-author">${_escapeHtmlCli(author)}</div>${_formatarMidiaChat(m.msg)}<div class="chat-time">${t}</div></div>`;
   }).join('');
   container.scrollTop = container.scrollHeight;

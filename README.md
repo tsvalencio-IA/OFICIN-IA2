@@ -1,6 +1,6 @@
 # JARVIS ERP V2 — Sistema de Gestão Automotiva
 
-**Sistema 100% funcional para GitHub Pages** — Vanilla JavaScript + Firestore + Gemini IA
+**Sistema 100% funcional para GitHub Pages** — Vanilla JavaScript + Firestore + IA Local
 
 ---
 
@@ -19,7 +19,7 @@ JARVIS_V2_FINAL/
 │   ├── auth.js             # Autenticação híbrida
 │   ├── os.js               # Ordens de Serviço (Kanban)
 │   ├── financeiro.js       # DRE + Parcelamento + NF
-│   └── ia.js               # Gemini RAG + Chat
+│   └── ia.js               # IA local \+ cérebro JSON
 └── README.md               # Este arquivo
 ```
 
@@ -31,8 +31,8 @@ JARVIS_V2_FINAL/
 
 ```bash
 # Clonar este projeto
-git clone https://github.com/seu-usuario/jarvis-erp.git
-cd jarvis-erp
+git clone https://github.com/tsvalencio-ia/OFICIN-IA.git
+cd OFICIN-IA
 
 # Criar branch gh-pages (se não existir)
 git checkout --orphan gh-pages
@@ -61,7 +61,7 @@ git commit -m "Deploy JARVIS ERP V2"
 git push origin gh-pages
 ```
 
-Seu site estará disponível em: `https://seu-usuario.github.io/jarvis-erp/`
+Seu site estará disponível em: `https://tsvalencio-ia.github.io/OFICIN-IA/`
 
 ---
 
@@ -100,7 +100,7 @@ oficinas/
 │   ├── status: "Ativo"
 │   ├── brandColor: "#3B82F6"
 │   ├── apiKeys: {
-│   │   gemini: "SUA_CHAVE_GEMINI",
+│   │   IA Local: "CEREBRO_JSON",
 │   │   cloudName: "seu-cloudinary",
 │   │   cloudPreset: "seu-preset"
 │   │ }
@@ -121,11 +121,11 @@ oficinas/
 
 ---
 
-## 🤖 Configurar Gemini IA
+## 🤖 Configurar IA Local
 
 1. Acesse [Google AI Studio](https://aistudio.google.com/app/apikeys)
 2. Crie uma chave de API
-3. Salve em `oficinas/{id}/apiKeys/gemini`
+3. Salve em `oficinas/{id}/apiKeys/IA Local`
 
 ---
 
@@ -182,7 +182,7 @@ oficinas/
 - Status: Pago/Pendente
 
 ### ✅ IA (RAG)
-- Gemini integrado
+- IA local integrada
 - Contexto dinâmico (dados da oficina)
 - Base de conhecimento técnico
 - Chat com admin
@@ -239,7 +239,7 @@ Modifique `css/design.css`:
 
 ### "API Key inválida"
 - Gere nova chave em [Google AI Studio](https://aistudio.google.com/app/apikeys)
-- Salve em `oficinas/{id}/apiKeys/gemini`
+- Salve em `oficinas/{id}/apiKeys/IA Local`
 
 ### Dados não aparecem
 - Abra DevTools (F12) → Console
@@ -305,3 +305,4 @@ Desenvolvido por **thIAguinho Soluções Digitais** — 2026
 **Versão:** 2.0.0  
 **Última atualização:** Abril 2026  
 **Status:** ✅ Produção
+

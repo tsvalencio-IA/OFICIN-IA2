@@ -23,7 +23,7 @@
     ok('window.J existe');
     inf('tid (oficina): '     + (window.J.tid    || '❌ VAZIO'));
     inf('role (perfil): '     + (window.J.role   || '❌ VAZIO'));
-    inf('gemini key: '        + (window.J.gemini ? '✓ configurada (' + window.J.gemini.slice(0,8)+'...)' : '❌ NÃO configurada'));
+    inf('IA local: '        + (typeof window.thiaResponderLocal === 'function' ? 'motor carregado' : 'motor indisponivel'));
     inf('OS carregadas: '     + (window.J.os?.length      ?? 0));
     inf('Clientes: '          + (window.J.clientes?.length ?? 0));
     inf('Veículos: '          + (window.J.veiculos?.length ?? 0));
@@ -124,15 +124,15 @@
   }
   sep();
 
-  // ─── 7. TESTE: IA GEMINI ─────────────────────────────────────
-  console.log('%c 7. IA GEMINI', 'color:#a78bfa;font-weight:bold;font-size:1rem;');
-  const gemKey = window.J?.gemini || window.J?.oficina?.apiKeys?.gemini;
-  if (!gemKey) {
-    err('Chave Gemini NÃO encontrada em J.gemini');
-    warn('Solução: no Firestore, acesse oficinas/{id_oficina} e adicione o campo apiKeys.gemini com sua chave do Google AI Studio');
+  // ─── 7. TESTE: IA LOCAL / CEREBRO ──────────────────────────────
+  console.log('%c 7. IA LOCAL / CEREBRO', 'color:#a78bfa;font-weight:bold;font-size:1rem;');
+  const iaLocalOk = typeof window.thiaResponderLocal === 'function';
+  const cerebroTenant = window.J?.oficina?.brain || window.J?.oficina?.cerebro || window.J?.oficina?.thiaguinhoBrain || {};
+  if (!iaLocalOk) {
+    err('Motor local thiaResponderLocal nao encontrado nesta tela');
   } else {
-    ok('Chave Gemini encontrada: ' + gemKey.slice(0,8) + '...');
-    inf('Para testar, tente enviar uma mensagem no chat da IA no jarvis.html');
+    ok('Motor local encontrado: thiaResponderLocal');
+    inf('Cerebro tenant: ' + Object.keys(cerebroTenant || {}).length + ' campo(s)');
   }
   sep();
 
@@ -140,16 +140,17 @@
   console.log('%c 8. PERMISSÕES (RBAC)', 'color:#a78bfa;font-weight:bold;font-size:1rem;');
   const role = (window.J?.role||'').toLowerCase();
   inf('Role atual: ' + (role || 'não definida'));
+  const cargo = (sessionStorage.getItem('j_cargo') || '').toLowerCase();
   const isDono = ['admin','superadmin'].includes(role);
   if (isDono) ok('É admin/superadmin → blocoReais DEVE estar visível ao abrir uma OS');
-  else        warn('Role não é admin → blocoReais ficará oculto (correto para mecânico/atendente)');
+  else        warn('Role não é admin → blocoReais ficará oculto (correto para mecânico/atendente). Cargo real: '+(cargo||'nao informado'));
   sep();
 
   // ─── 9. SESSIONSSTORAGE ─────────────────────────────────────
   console.log('%c 9. SESSIONSTORAGE', 'color:#a78bfa;font-weight:bold;font-size:1rem;');
-  ['j_tid','j_role','j_nome','j_gemini'].forEach(k => {
+  ['j_tid','j_role','j_cargo','j_nome'].forEach(k => {
     const v = sessionStorage.getItem(k);
-    if (v) ok(k + ' = ' + (k==='j_gemini'?v.slice(0,8)+'...':v));
+    if (v) ok(k + ' = ' + v);
     else   err(k + ' = VAZIO');
   });
   sep();
@@ -157,3 +158,4 @@
   // ─── RESUMO FINAL ────────────────────────────────────────────
   console.log('%c DIAGNÓSTICO CONCLUÍDO — verifique os itens ❌ acima', 'background:#0a0a1a;color:#fbbf24;font-size:1rem;font-weight:bold;padding:6px 16px;border-radius:4px;');
 })();
+
