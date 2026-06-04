@@ -952,10 +952,13 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="j-card">
         <div class="j-card-header">
           <div class="j-card-title" style="color:var(--warn)">thIAguinho — DIAGNÓSTICO INTELIGENTE</div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <button class="btn-warn" onclick="iaAnalisarDRE()">📊 ANALISAR DRE</button>
             <button class="btn-warn" onclick="iaAnalisarEstoque()">📦 ANALISAR ESTOQUE</button>
           </div>
+        </div>
+        <div id="thiaDiagIaInlineStatus" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.45);font-size:.75rem;">
+          <span style="padding:5px 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);color:var(--muted,#94a3b8);">Carregando IA Diagnóstico do tenant...</span>
         </div>
         <div class="ia-box">
           <div class="ia-messages" id="iaMsgs">

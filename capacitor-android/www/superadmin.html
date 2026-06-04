@@ -411,11 +411,15 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div class="form-group"><label class="j-label">Senha do portal externo</label><input class="j-input" id="tDiagIASenha" placeholder="senha do portal" type="password" autocomplete="off"></div>
       </div>
       <div class="form-row c2">
-        <div class="form-group"><label class="j-label">URL do portal</label><input class="j-input" id="tDiagIAPortalUrl" placeholder="https://www.appdiagnosticoautomotivo.com.br/"></div>
+        <div class="form-group"><label class="j-label">URL do portal integrado</label><input class="j-input" id="tDiagIAPortalUrl" placeholder="https://www.appdiagnosticoautomotivo.com.br/"></div>
         <div class="form-group"><label class="j-label">Endpoint/proxy seguro (opcional)</label><input class="j-input" id="tDiagIAEndpoint" placeholder="preencher somente quando houver API/proxy"></div>
       </div>
+      <div class="form-row c2">
+        <label class="mod-check" style="display:flex;"><input type="checkbox" id="tDiagIAEmbedInterno" checked> Abrir dentro do OFICIN-IA</label>
+        <label class="mod-check" style="display:flex;"><input type="checkbox" id="tDiagIAAutoLogin" checked> Tentar auto-login do tenant</label>
+      </div>
       <div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted2);line-height:1.45;">
-        Sem endpoint conhecido, o OFICIN-IA abre o portal externo e mostra as credenciais da oficina. Quando um endpoint/proxy existir, o chat passa a enviar perguntas automaticamente.
+        Sem endpoint conhecido, o OFICIN-IA carrega o portal dentro da própria tela e tenta preencher usuário/senha do tenant. Se o fornecedor bloquear iframe/CORS, será necessário proxy/backend para login 100% transparente.
       </div>
     </div>
     <div class="form-row c2">
@@ -733,7 +737,7 @@ const CAMPOS_DADOS_OFICINA=[
   'tRazaoSocial','tCnpj','tEndereco','tNumero','tBairro','tCidade','tUf','tCep',
   'tTelefone','tEmail','tResponsavel','tOrcamentista','tRepresentante','tLogoUrl','tAssinaturaNome','tAssinaturaCargo','tAssinaturaDocumento','tAssinaturaUrl',
   'tPublicSlug','tPublicBaseUrl','tBrainContexto','tBrainCatalogos','tBrainErros','tBrainRegras','tBrainProcedimentos',
-  'tTplPdfOrcamento','tTplPdfLaudo','tTplPlanilhaPMSP','tTplObservacoes','tDiagIAUser','tDiagIASenha','tDiagIAPortalUrl','tDiagIAEndpoint'
+  'tTplPdfOrcamento','tTplPdfLaudo','tTplPlanilhaPMSP','tTplObservacoes','tDiagIAUser','tDiagIASenha','tDiagIAPortalUrl','tDiagIAEndpoint','tDiagIAEmbedInterno','tDiagIAAutoLogin'
 ];
 const CAMPOS_FIREBASE_OFICINA=[
   'tFbApiKey','tFbAuthDomain','tFbProjectId','tFbStorageBucket','tFbMessagingSenderId','tFbAppId'
@@ -845,6 +849,8 @@ function prepTenant(mode,id=null){
     if($('tDiagIASenha')) $('tDiagIASenha').value=iaDiag.senha||iaDiag.password||'';
     if($('tDiagIAPortalUrl')) $('tDiagIAPortalUrl').value=iaDiag.portalUrl||iaDiag.url||'https://www.appdiagnosticoautomotivo.com.br/';
     if($('tDiagIAEndpoint')) $('tDiagIAEndpoint').value=iaDiag.endpoint||iaDiag.proxyUrl||'';
+    if($('tDiagIAEmbedInterno')) $('tDiagIAEmbedInterno').checked=iaDiag.embedInterno!==false;
+    if($('tDiagIAAutoLogin')) $('tDiagIAAutoLogin').checked=iaDiag.autoLogin!==false;
     $('mAgd').checked=!!m.agenda; $('mRH').checked=!!m.rh;
     if($('mComissoes')) $('mComissoes').checked=!!m.comissoes;
     if($('mAutoPecas')) $('mAutoPecas').checked=!!m.autoPecas;
@@ -1067,10 +1073,12 @@ async function salvarTenant(){
       iaDiagnosticoAutomotivo:{
         ativo:$('mIADiagExt')?$('mIADiagExt').checked:false,
         moduloLiberado:$('mIADiagExt')?$('mIADiagExt').checked:false,
-        modo:$v('tDiagIAEndpoint')?'endpoint':'portal',
+        modo:$v('tDiagIAEndpoint')?'endpoint':'integrado',
         nome:'Diagnóstico Automotivo',
         portalUrl:$v('tDiagIAPortalUrl')||'https://www.appdiagnosticoautomotivo.com.br/',
         endpoint:$v('tDiagIAEndpoint'),
+        embedInterno:$('tDiagIAEmbedInterno')?$('tDiagIAEmbedInterno').checked:true,
+        autoLogin:$('tDiagIAAutoLogin')?$('tDiagIAAutoLogin').checked:true,
         usuario:$v('tDiagIAUser'),
         login:$v('tDiagIAUser'),
         email:$v('tDiagIAUser'),
@@ -1081,8 +1089,11 @@ async function salvarTenant(){
     },
     iaDiagnosticoAutomotivo:{
       ativo:$('mIADiagExt')?$('mIADiagExt').checked:false,
+      modo:$v('tDiagIAEndpoint')?'endpoint':'integrado',
       portalUrl:$v('tDiagIAPortalUrl')||'https://www.appdiagnosticoautomotivo.com.br/',
       endpoint:$v('tDiagIAEndpoint'),
+      embedInterno:$('tDiagIAEmbedInterno')?$('tDiagIAEmbedInterno').checked:true,
+      autoLogin:$('tDiagIAAutoLogin')?$('tDiagIAAutoLogin').checked:true,
       usuario:$v('tDiagIAUser'),
       senha:$v('tDiagIASenha'),
       atualizadoEm:new Date().toISOString()
