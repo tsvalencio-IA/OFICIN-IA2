@@ -247,8 +247,7 @@
             </div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-            <button type="button" class="btn-ghost" onclick="window.thiaCopiarDiagnosticoIA('usuario')">Copiar usuário</button>
-            <button type="button" class="btn-ghost" onclick="window.thiaCopiarDiagnosticoIA('senha')">Copiar senha</button>
+            <button type="button" class="btn-primary" onclick="window.thiaEntrarAutomaticoDiagnosticoIA()">Entrar automaticamente</button>
             <button type="button" class="btn-ghost" onclick="window.thiaRecarregarFrameDiagnosticoIA()">Recarregar</button>
             <button type="button" class="btn-warn" onclick="document.getElementById('thiaDiagIaEmbedOverlay').remove()">Fechar</button>
           </div>
@@ -269,8 +268,8 @@
       if (!ok && msg) {
         msg.style.display = 'block';
         msg.innerHTML =
-          'Portal carregado dentro do OFICIN-IA. O auto-login pode ficar bloqueado pelo navegador por segurança quando o site é de outro domínio. ' +
-          'Use “Copiar usuário” e “Copiar senha” se os campos não preencherem automaticamente.';
+          'Portal carregado dentro do OFICIN-IA. Toque em “Entrar automaticamente” se os campos não entrarem sozinhos. ' +
+          'Se o navegador bloquear acesso ao formulário por ser outro domínio, o botão vai avisar na tela.';
       }
     });
 
@@ -319,15 +318,15 @@
           </div>
           <div style="display:grid;gap:10px;margin-top:8px;">
             <div><label style="display:block;font-size:.72rem;color:var(--muted,#94a3b8);margin-bottom:4px;">Portal integrado</label><div class="j-input" style="height:auto;min-height:38px;display:flex;align-items:center;">${esc(cfg.portalUrl || PORTAL_PADRAO)}</div></div>
-            <div><label style="display:block;font-size:.72rem;color:var(--muted,#94a3b8);margin-bottom:4px;">Usuário do tenant</label><div style="display:flex;gap:8px;"><div class="j-input" style="height:auto;min-height:38px;display:flex;align-items:center;flex:1;">${esc(cfg.usuario || 'Não cadastrado')}</div><button class="btn-ghost" onclick="window.thiaCopiarDiagnosticoIA('usuario')">Copiar</button></div></div>
-            <div><label style="display:block;font-size:.72rem;color:var(--muted,#94a3b8);margin-bottom:4px;">Senha do tenant</label><div style="display:flex;gap:8px;"><div class="j-input" style="height:auto;min-height:38px;display:flex;align-items:center;flex:1;">${esc(senhaMask)}</div><button class="btn-ghost" onclick="window.thiaCopiarDiagnosticoIA('senha')">Copiar</button></div></div>
+            <div><label style="display:block;font-size:.72rem;color:var(--muted,#94a3b8);margin-bottom:4px;">Usuário do tenant</label><div class="j-input" style="height:auto;min-height:38px;display:flex;align-items:center;">${esc(cfg.usuario ? 'Cadastrado no Superadmin' : 'Não cadastrado')}</div></div>
+            <div><label style="display:block;font-size:.72rem;color:var(--muted,#94a3b8);margin-bottom:4px;">Senha do tenant</label><div class="j-input" style="height:auto;min-height:38px;display:flex;align-items:center;">${esc(senhaMask)}</div></div>
             <div style="font-size:.72rem;color:var(--muted,#94a3b8);line-height:1.5;background:rgba(148,163,184,.08);padding:10px;border-radius:10px;">
-              O OFICIN-IA vai tentar abrir o portal dentro da própria tela e preencher o login. Se o site externo bloquear iframe ou acesso ao formulário por segurança, o navegador não permite auto-login via JavaScript de outro domínio.
+              O OFICIN-IA usa o login e a senha cadastrados no Superadmin para tentar preencher e entrar sozinho. O usuário da oficina não precisa copiar credencial. Se o site externo bloquear automação por segurança, o sistema vai avisar.
             </div>
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;">
             <button class="btn-ghost" onclick="window.thiaRecarregarConfigDiagnosticoIA()">Recarregar config</button>
-            <button class="btn-primary" onclick="document.getElementById('thiaDiagIaOverlay').remove();window.thiaAbrirDiagnosticoAutomotivoIntegrado()">Abrir dentro do OFICIN-IA</button>
+            <button class="btn-primary" onclick="document.getElementById('thiaDiagIaOverlay').remove();window.thiaAbrirDiagnosticoAutomotivoIntegrado();setTimeout(function(){window.thiaEntrarAutomaticoDiagnosticoIA&&window.thiaEntrarAutomaticoDiagnosticoIA();},900)">Abrir e entrar automaticamente</button>
           </div>
         </div>
       </div>`;
@@ -345,6 +344,48 @@
   function recarregarFrame() {
     const iframe = D.getElementById('thiaDiagIaFrame');
     if (iframe) iframe.src = iframe.src;
+  }
+
+  async function entrarAutomatico() {
+    const cfg = await carregarConfigTenant(true);
+    const iframe = D.getElementById('thiaDiagIaFrame');
+    const msg = D.getElementById('thiaDiagIaEmbedMsg');
+
+    if (!cfg.usuario || !cfg.senha) {
+      if (msg) {
+        msg.style.display = 'block';
+        msg.innerHTML = 'Login e/ou senha da IA Diagnóstico não cadastrados no Superadmin para este tenant.';
+      }
+      if (typeof W.toast === 'function') W.toast('Credencial da IA Diagnóstico não cadastrada.', 'warn');
+      return false;
+    }
+
+    if (!iframe) {
+      await abrirPortalIntegrado();
+      setTimeout(entrarAutomatico, 1200);
+      return false;
+    }
+
+    const ok = await tentarAutoLoginNoFrame(iframe, cfg);
+    if (ok) {
+      if (msg) {
+        msg.style.display = 'block';
+        msg.style.background = 'rgba(34,197,94,.10)';
+        msg.innerHTML = 'Auto-login enviado com o usuário e senha cadastrados no Superadmin.';
+      }
+      if (typeof W.toast === 'function') W.toast('Auto-login enviado.', 'ok');
+      return true;
+    }
+
+    if (msg) {
+      msg.style.display = 'block';
+      msg.style.background = 'rgba(239,68,68,.10)';
+      msg.innerHTML =
+        'Não consegui preencher automaticamente. Normalmente isso acontece quando o site externo bloqueia acesso ao formulário dentro do iframe. ' +
+        'A credencial está cadastrada no tenant, mas o navegador não permite injetar o login nesse portal.';
+    }
+    if (typeof W.toast === 'function') W.toast('Auto-login bloqueado pelo portal/navegador.', 'warn');
+    return false;
   }
 
   async function chamarIA(inputId, perfil) {
@@ -388,7 +429,7 @@
     addBot(
       '<b>IA Diagnóstico Automotivo liberada para este tenant.</b><br>' +
       'Como ainda não temos endpoint/API, vou abrir o portal dentro do OFICIN-IA usando as credenciais configuradas no Superadmin.<br><br>' +
-      '<button class="btn-primary" onclick="window.thiaAbrirDiagnosticoAutomotivoIntegrado(' + JSON.stringify(message).replace(/"/g, '&quot;') + ')">Abrir IA integrada</button> ' +
+      '<button class="btn-primary" onclick="window.thiaAbrirDiagnosticoAutomotivoIntegrado(' + JSON.stringify(message).replace(/"/g, '&quot;') + ');setTimeout(function(){window.thiaEntrarAutomaticoDiagnosticoIA&&window.thiaEntrarAutomaticoDiagnosticoIA();},900)">Abrir e entrar automático</button> ' +
       '<button class="btn-ghost" onclick="window.thiaMostrarCredenciaisDiagnosticoIA()">Ver status</button><br><br>' +
       '<small style="color:var(--muted,#94a3b8)">Se o fornecedor bloquear iframe ou auto-login por segurança, será necessário proxy/backend para login 100% transparente.</small>'
     );
@@ -408,7 +449,7 @@
     const cor = ativo ? 'var(--success,#22c55e)' : 'var(--muted,#94a3b8)';
     const conteudo = `
       <span id="thiaDiagIaStatus" style="padding:5px 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);color:${cor};">${esc(texto)}</span>
-      <button type="button" class="btn-primary" onclick="window.thiaAbrirDiagnosticoAutomotivoIntegrado()">Abrir IA dentro do sistema</button>
+      <button type="button" class="btn-primary" onclick="window.thiaAbrirDiagnosticoAutomotivoIntegrado();setTimeout(function(){window.thiaEntrarAutomaticoDiagnosticoIA&&window.thiaEntrarAutomaticoDiagnosticoIA();},900)">Entrar na IA</button>
       <button type="button" class="btn-ghost" onclick="window.thiaMostrarCredenciaisDiagnosticoIA()">Credenciais / status</button>
     `;
 
@@ -450,6 +491,7 @@
   W.thiaCopiarDiagnosticoIA = copiarCredencial;
   W.thiaRecarregarConfigDiagnosticoIA = recarregarConfig;
   W.thiaRecarregarFrameDiagnosticoIA = recarregarFrame;
+  W.thiaEntrarAutomaticoDiagnosticoIA = entrarAutomatico;
 
   D.addEventListener('DOMContentLoaded', function () {
     setTimeout(function () { carregarConfigTenant(false); atualizarBarra(); }, 120);
