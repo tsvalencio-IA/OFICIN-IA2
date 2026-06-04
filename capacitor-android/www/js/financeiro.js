@@ -27,6 +27,13 @@ function somarMesesISOFin(iso, meses) {
     return dataLocalISOFin(dt);
 }
 function compararISOFin(a,b){ return String(a||'').slice(0,10).localeCompare(String(b||'').slice(0,10)); }
+function normalizarStatusFinanceiroFin(status) {
+    return String(status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+function financeiroCanceladoOuReemitidoFin(f) {
+    const st = normalizarStatusFinanceiroFin(f?.status);
+    return st === 'cancelado' || st === 'cancelada' || f?.canceladoPorReemissaoOS === true;
+}
 
 window.renderFinanceiro = function() {
     const buscaTipo = $v('filtroFinTipo');
@@ -35,7 +42,12 @@ window.renderFinanceiro = function() {
 
     let base = [...J.financeiro];
     if (buscaTipo) base = base.filter(f => f.tipo === buscaTipo);
-    if (buscaStatus) base = base.filter(f => f.status === buscaStatus);
+    if (buscaStatus === 'Cancelado') {
+        base = base.filter(financeiroCanceladoOuReemitidoFin);
+    } else {
+        base = base.filter(f => !financeiroCanceladoOuReemitidoFin(f));
+        if (buscaStatus) base = base.filter(f => f.status === buscaStatus);
+    }
     if (buscaMes) base = base.filter(f => (f.venc || '').startsWith(buscaMes));
 
     base.sort((a, b) => (b.venc || '') > (a.venc || '') ? 1 : -1);
@@ -68,9 +80,10 @@ window.renderFinanceiro = function() {
     }
 
     tb.innerHTML = base.map(f => {
-        const stCls = f.status === 'Pago' ? 'pill-green' : 'pill-warn'; 
+        const cancelado = financeiroCanceladoOuReemitidoFin(f);
+        const stCls = f.status === 'Pago' ? 'pill-green' : (cancelado ? 'pill-danger' : 'pill-warn'); 
         const tipCls = f.tipo === 'Entrada' ? 'pill-green' : 'pill-danger';
-        const atrasado = f.status === 'Pendente' && f.venc && compararISOFin(f.venc, dataLocalISOFin()) < 0;
+        const atrasado = !cancelado && f.status === 'Pendente' && f.venc && compararISOFin(f.venc, dataLocalISOFin()) < 0;
         const corValor = f.tipo === 'Entrada' ? 'var(--success)' : 'var(--danger)';
         
         let vinculoNome = '';
@@ -346,16 +359,19 @@ window.salvarNF = async function() {
         });
     }
     
-    const formas = ['Dinheiro', 'PIX']; 
-    const st = formas.includes($v('nfPgtoForma')) ? 'Pago' : 'Pendente';
-    const nPar = parseInt($v('nfParcelas') || 1);
+    const formaNF = $v('nfPgtoForma') || 'Dinheiro';
+    const formaNormNF = String(formaNF).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const formaAVistaNF = formaNormNF.includes('pix') || formaNormNF.includes('dinheiro') || formaNormNF.includes('debito');
+    const formaPermiteParcelasNF = formaNormNF.includes('boleto') || formaNormNF.includes('parcelado');
+    const st = formaAVistaNF ? 'Pago' : 'Pendente';
+    const nPar = formaPermiteParcelasNF ? (parseInt($v('nfParcelas') || 1, 10) || 1) : 1;
     
     for (let i = 0; i < nPar; i++) {
         const dISO = somarMesesISOFin($v('nfVenc') || dataLocalISOFin(), i);
         batch.set(db.collection('financeiro').doc(), {
             tenantId: J.tid, tipo: 'Saída', status: st,
             desc: `NF ${$v('nfNumero') || 's/n'} — ${J.fornecedores.find(f => f.id === $v('nfFornec'))?.nome || 'Fornecedor'} ${nPar > 1 ? `(${i + 1}/${nPar})` : ''}`,
-            valor: totalNF / nPar, pgto: $v('nfPgtoForma'), venc: dISO, createdAt: new Date().toISOString()
+            valor: totalNF / nPar, pgto: formaNF, venc: dISO, createdAt: new Date().toISOString()
         });
     }
     
@@ -450,7 +466,12 @@ window.exportarFinanceiro = function() {
 
     let base = [...J.financeiro];
     if (buscaTipo) base = base.filter(f => f.tipo === buscaTipo);
-    if (buscaStatus) base = base.filter(f => f.status === buscaStatus);
+    if (buscaStatus === 'Cancelado') {
+        base = base.filter(financeiroCanceladoOuReemitidoFin);
+    } else {
+        base = base.filter(f => !financeiroCanceladoOuReemitidoFin(f));
+        if (buscaStatus) base = base.filter(f => f.status === buscaStatus);
+    }
     if (buscaMes) base = base.filter(f => (f.venc || '').startsWith(buscaMes));
     base.sort((a, b) => (b.venc || '') > (a.venc || '') ? 1 : -1);
 

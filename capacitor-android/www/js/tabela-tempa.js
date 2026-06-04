@@ -53,7 +53,7 @@
     // Tokeniza tudo em minúsculas removendo acentos para busca rápida
     TT.indice = itens.map(it => ({
       ref: it,
-      busca: _norm(it.sistema) + ' ' + _norm(it.operacao) + ' ' + _norm(it.item) + ' ' + it.codigo
+      busca: _norm(it.sistema) + ' ' + _norm(it.operacao) + ' ' + _norm(it.item) + ' ' + _norm(it.codigoInterno) + ' ' + it.codigo
     }));
   }
 
@@ -344,7 +344,10 @@
       const tempoFmt = it.tempo.toFixed(2).replace('.', ',');
       const tempoHHmm = _hToHHmm(it.tempo);
       return `<tr>
-        <td><span class="pill pill-cyan" style="font-family:var(--fm);font-size:0.65rem;">${_esc(it.codigo)}</span></td>
+        <td>
+          ${it.codigoInterno ? `<span class="pill pill-cyan" style="font-family:var(--fm);font-size:0.65rem;">${_esc(it.codigoInterno)}</span><br>` : ''}
+          <small style="font-family:var(--fm);font-size:0.58rem;color:var(--muted);">SIAFISICO ${_esc(it.codigo || '-')}</small>
+        </td>
         <td style="font-size:0.78rem;color:var(--text);">${_esc(it.sistema)}</td>
         <td><span style="font-family:var(--fm);font-size:0.7rem;color:var(--warn);">${_esc(it.operacao)}</span></td>
         <td style="font-size:0.8rem;">${_esc(it.item)}</td>
@@ -360,7 +363,7 @@
   // FERRAMENTAS AUXILIARES
   // ───────────────────────────────────────────────────────────────
   window.tempaCopiarItem = function(it) {
-    const txt = `${it.sistema} | ${it.operacao} | ${it.item} | ${it.tempo.toFixed(2).replace('.', ',')}h`;
+    const txt = `${it.sistema} | ${it.operacao} | ${it.item} | COD. INTERNO: ${it.codigoInterno || '-'} | SIAFISICO: ${it.codigo || '-'} | ${it.tempo.toFixed(2).replace('.', ',')}h`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(txt).then(() => {
         if (window.toast) window.toast('✓ Item copiado: ' + txt.substring(0, 60), 'ok');
@@ -429,6 +432,7 @@
     if (inputTempo) inputTempo.value = item.tempo.toFixed(2).replace('.', ',');
 
     row.dataset.tempoTabela = item.tempo;
+    row.dataset.codigoInterno = item.codigoInterno || '';
     row.dataset.codigoTabela = item.codigo;
     row.dataset.sistemaTabela = item.sistema;
     row.dataset.tempaManual = '';
@@ -487,7 +491,7 @@
             ? (secao ? `${_esc(secao.label)} - R$ ${Number(secao.valor || 0).toFixed(2).replace('.', ',')}/h` : 'Sem secao oficial automatica')
             : `${it.tempo.toFixed(2).replace('.', ',')}h`;
           return `<button type="button" class="tempa-inline-option" data-tempa-idx="${idx}">
-            <span><b>${_esc(it.operacao)} ${_esc(it.item)}</b><br><small>${_esc(it.sistema)} - cod. ${_esc(it.codigo)} - ${_esc(secaoTxt)}</small></span>
+            <span><b>${_esc(it.operacao)} ${_esc(it.item)}</b><br><small>${_esc(it.sistema)} - interno ${_esc(it.codigoInterno || '-')} - SIAFISICO ${_esc(it.codigo)} - ${_esc(secaoTxt)}</small></span>
             <strong>${it.tempo.toFixed(2).replace('.', ',')}h</strong>
           </button>`;
         }).join('')}
@@ -753,6 +757,7 @@
       }
       // Garante metadados da tabela para exportação/detalhamento
       b.rowEl.dataset.tempoTabela = itemEscolhido.tempo;
+      b.rowEl.dataset.codigoInterno = itemEscolhido.codigoInterno || '';
       b.rowEl.dataset.codigoTabela = itemEscolhido.codigo;
       b.rowEl.dataset.sistemaTabela = itemEscolhido.sistema;
       b.rowEl.dataset.secaoHora = secaoInfo?.key || b.rowEl.dataset.secaoHora || '';
