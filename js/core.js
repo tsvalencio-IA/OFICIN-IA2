@@ -27,7 +27,6 @@ window.J = {
   nome:        sessionStorage.getItem('j_nome')         || 'Usuário',
   tnome:       sessionStorage.getItem('j_tnome')        || 'Oficina',
   fid:         sessionStorage.getItem('j_fid')          || null,
-  gemini:      sessionStorage.getItem('j_gemini')       || null,
   nicho:       sessionStorage.getItem('j_nicho')        || 'carros',
   cloudName:   sessionStorage.getItem('j_cloud_name')   || 'dmuvm1o6m',
   cloudPreset: sessionStorage.getItem('j_cloud_preset') || 'evolution',
@@ -160,13 +159,11 @@ function _escutarOficina() {
     const d = { id: doc.id, ...doc.data() };
     J.oficina = d;
     J.tnome = d.nomeFantasia || J.tnome;
-    J.gemini = d.apiKeys?.gemini || J.gemini;
     J.nicho = d.nicho || J.nicho;
     J.cloudName = d.apiKeys?.cloudName || J.cloudName;
     J.cloudPreset = d.apiKeys?.cloudPreset || J.cloudPreset;
     sessionStorage.setItem('j_oficina', JSON.stringify(d));
     sessionStorage.setItem('j_tnome', J.tnome);
-    sessionStorage.setItem('j_gemini', J.gemini || '');
     sessionStorage.setItem('j_nicho', J.nicho || 'carros');
     sessionStorage.setItem('j_cloud_name', J.cloudName || 'dmuvm1o6m');
     sessionStorage.setItem('j_cloud_preset', J.cloudPreset || 'evolution');
@@ -473,7 +470,9 @@ window.randId= (n=6) => Math.random().toString(36).slice(-n).toUpperCase();
 window.sair = function() { sessionStorage.clear(); window.location.href='index.html'; };
 window.abrirWpp = function(numero, msg) {
   const n = (numero||'').replace(/\D/g,'');
-  window.open(`https://wa.me/55${n}?text=${encodeURIComponent(msg||'')}`, '_blank');
+  if (!n) return;
+  if (typeof window.thiaOpenWhatsApp === 'function') window.thiaOpenWhatsApp(n, msg || '');
+  else window.open(`https://web.whatsapp.com/send?phone=55${n}&text=${encodeURIComponent(msg||'')}`, '_blank');
 };
 
 window.setBadge = function(id, count) {

@@ -1,7 +1,7 @@
 (function() {
   'use strict';
 
-  const TEMPLATE_URL = 'assets/templates/I-30003_PLANILHA_DE_CUSTOS.xlsx';
+  const TEMPLATE_URL_PADRAO = 'assets/templates/I-30003_PLANILHA_DE_CUSTOS.xlsx';
   const SERV_START = 19;
   const SERV_END = 74;
   const SERV_TOTAL = 75;
@@ -13,6 +13,70 @@
 
   const U = () => window.JarvisOSUtils || window.JOS || {};
   const n = value => U().parseNumberBR ? U().parseNumberBR(value) : (parseFloat(String(value || 0).replace(',', '.')) || 0);
+  function templatePMSPUrl(){
+    const tpl = (typeof window.thiaGetTemplates === 'function' ? window.thiaGetTemplates() : (window.J?.oficina?.templates || {})) || {};
+    return String(tpl.planilhaPMSP || TEMPLATE_URL_PADRAO).trim() || TEMPLATE_URL_PADRAO;
+  }
+
+  function textoCelulaExportar(value) {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      if (value.richText) return value.richText.map(x => x.text || '').join('');
+      if (value.text) return String(value.text);
+      if (value.result != null) return String(value.result);
+      if (value.formula) return String(value.result ?? value.formula ?? '');
+    }
+    return String(value);
+  }
+
+  function ultimaLinhaUsadaExportar(ws) {
+    let last = 0;
+    ws.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+      let hasValue = false;
+      row.eachCell({ includeEmpty: false }, cell => {
+        const txt = textoCelulaExportar(cell.value).trim();
+        if (txt) hasValue = true;
+      });
+      if (hasValue) last = Math.max(last, rowNumber);
+    });
+    return last;
+  }
+
+  function limparCorpoTemplateAgrupado(ws, startRow, linhasAgrupadas) {
+    const lastUsed = Math.max(PECA_TOTAL, ultimaLinhaUsadaExportar(ws));
+    const removeCount = Math.max(1, lastUsed - startRow + 1);
+    ws.spliceRows(startRow, removeCount, ...Array.from({ length: Math.max(1, linhasAgrupadas) }, () => []));
+  }
+
+  function limparBlocoAssinaturaAgrupada(ws, labelRow, representanteRow) {
+    // A linha labelRow tambem carrega "VALOR DO CONTRATO" em B:H, entao preserva B:H nela.
+    for (let r = labelRow + 1; r <= representanteRow + 3; r++) {
+      safeUnmergeOverlaps(ws, `B${r}:H${r}`);
+      ['B','C','D','E','F','G','H'].forEach(col => setCell(ws, col + r, ''));
+    }
+  }
+
+  function limparLinhasAbaixoExportar(ws, keepUntil) {
+    const lastUsed = Math.max(ultimaLinhaUsadaExportar(ws), ws.rowCount || 0, PECA_TOTAL);
+    mergeRanges(ws).forEach(item => {
+      if (item.decoded.top > keepUntil || item.decoded.bottom > keepUntil) {
+        try { ws.unMergeCells(item.range); } catch(e) {}
+      }
+    });
+    for (let r = keepUntil + 1; r <= lastUsed; r++) {
+      const row = ws.getRow(r);
+      row.values = [];
+      row.hidden = true;
+      ['A','B','C','D','E','F','G','H'].forEach(col => {
+        const cell = ws.getCell(col + r);
+        cell.value = '';
+        cell.note = undefined;
+      });
+    }
+    if (lastUsed > keepUntil) {
+      try { ws.spliceRows(keepUntil + 1, lastUsed - keepUntil); } catch(e) {}
+    }
+  }
 
   function guinchoOSExportar(os) {
     const g = os?.deslocamentoGuincho || os?.guincho || {};
@@ -132,8 +196,13 @@
     const isTapecaria = /\b(tapecaria|capotaria|banco|assento|encosto|forro|estof)\b/;
     const isBorracharia = /\b(borracharia|pneu|pneus|roda|rodas|calota|balanceamento)\b/;
     const isLavagem = /\b(lavagem|higienizacao|higienizar|limpeza interna|polimento)\b/;
-    const isInjecao = /\b(injecao|injetor|injetores|bico|bicos|combustivel|alimentacao|bomba de combustivel|tanque)\b/;
-    const isMecanica = /\b(mecanica|motor|cambio|embreagem|transmissao|arrefecimento|radiador|suspensao|amortecedor|amortecedores|mola|molas|bandeja|pivo|terminal|bieleta|coifa|homocinetica|semieixo|semi eixo|semi-eixo|freio|pastilha|pastilhas|disco|tambor|direcao|retifica|rolamento)\b/;
+    const isFreio = /\b(freio|freios|pastilha|pastilhas|disco|discos|tambor|tambores|pin[cç]a|cilindro mestre|servo freio|fluido de freio|pist[aã]o do freio)\b/;
+    const isSuspensao = /\b(suspensao|suspens[aã]o|amortecedor|amortecedores|mola|molas|batente|coxim|bandeja|bra[cç]o oscilante|barra estabilizadora|bieleta|piv[oô]|terminal|bucha|buchas|haste da barra|barra de tor[cç][aã]o)\b/;
+    const isDirecao = /\b(direcao|dire[cç][aã]o|caixa de dire[cç][aã]o|barra axial|terminal de dire[cç][aã]o|coluna de dire[cç][aã]o)\b/;
+    const isMotor = /\b(motor|correia dentada|correia|tensor|tampa de v[aá]lvulas|junta da tampa|coletor|retifica|cabe[cç]ote|arrefecimento|radiador|mangueira|intercooler|compressor|condensador|ar condicionado|filtro de [oó]leo|filtro do ar|filtro de ar|vela|velas|cabo de vela|cabos de vela)\b/;
+    const isCambio = /\b(cambio|c[aâ]mbio|embreagem|atuador de embreagem|kit de embreagem|transmissao|transmiss[aã]o|homocinetica|homocin[eé]tica|semieixo|semi eixo|semi-eixo|coifa do semi|coifa externa|coifa interna)\b/;
+    const isInjecao = /\b(injecao|inje[cç][aã]o|injetor|injetores|bico|bicos|combustivel|combust[ií]vel|alimentacao|alimenta[cç][aã]o|bomba de combustivel|bomba de combust[ií]vel|tanque|boia|b[oó]ia)\b/;
+    const isMecanica = /\b(mecanica|mec[aâ]nica|rolamento|rolamentos)\b/;
     const isEletrica = /\b(eletrica|eletrico|eletronica|alternador|bateria|lampada|lanterna|farol|sensor|chicote|fusivel|rele|motor de partida|vidro eletrico|trava eletrica)\b/;
 
     // Primeiro usa a DESCRIÇÃO do serviço. Ela é mais específica que a seção PMSP,
@@ -143,14 +212,24 @@
     if (isTapecaria.test(desc)) return 'TAPECARIA / CAPOTARIA';
     if (isBorracharia.test(desc)) return 'BORRACHARIA';
     if (isLavagem.test(desc)) return 'LAVAGEM / HIGIENIZACAO';
+    if (isFreio.test(desc)) return 'FREIO';
+    if (isSuspensao.test(desc)) return 'SUSPENSAO';
+    if (isDirecao.test(desc)) return 'DIRECAO';
+    if (isCambio.test(desc)) return 'CAMBIO / TRANSMISSAO';
+    if (isMotor.test(desc)) return 'MOTOR / ARREFECIMENTO';
     if (isInjecao.test(desc)) return 'INJECAO / ALIMENTACAO';
-    if (isMecanica.test(desc)) return 'MECANICA';
     if (isEletrica.test(desc)) return 'ELETRICA';
+    if (isMecanica.test(desc)) return 'MECANICA';
 
     if (isFunilaria.test(t)) return 'FUNILARIA / PINTURA';
     if (isTapecaria.test(t)) return 'TAPECARIA / CAPOTARIA';
     if (isBorracharia.test(t)) return 'BORRACHARIA';
     if (isLavagem.test(t)) return 'LAVAGEM / HIGIENIZACAO';
+    if (isFreio.test(t)) return 'FREIO';
+    if (isSuspensao.test(t)) return 'SUSPENSAO';
+    if (isDirecao.test(t)) return 'DIRECAO';
+    if (isCambio.test(t)) return 'CAMBIO / TRANSMISSAO';
+    if (isMotor.test(t)) return 'MOTOR / ARREFECIMENTO';
     if (isInjecao.test(t)) return 'INJECAO / ALIMENTACAO';
 
     if (/mecanica\s+eletrica\s+geral/.test(sistema) || (isMecanica.test(t) && isEletrica.test(t))) return 'MECANICA';
@@ -192,15 +271,34 @@
     return limparTexto(pick(veiculoAtual.tipo, veiculoAtual.categoria, veiculoAtual.porte)).toUpperCase();
   }
 
-  function codigoServicoTempa(servico, resolvido) {
+  function codigoInternoServicoTempa(servico, resolvido) {
+    return limparTexto(pick(
+      servico?.codigoInterno,
+      servico?.codInterno,
+      servico?.codigoServicoInterno,
+      resolvido?.codigoInterno,
+      resolvido?.codInterno
+    ));
+  }
+
+  function codigoTabelaServicoTempa(servico, resolvido) {
     return limparTexto(pick(
       servico?.codigoTabela,
       servico?.codigoTempa,
+      servico?.codigoSiafisico,
+      resolvido?.codigoTabela,
+      resolvido?.codigo
+    ));
+  }
+
+  function codigoServicoTempa(servico, resolvido) {
+    return limparTexto(pick(
+      codigoInternoServicoTempa(servico, resolvido),
+      codigoTabelaServicoTempa(servico, resolvido),
       servico?.codigoServico,
       servico?.codigo,
       servico?.cod,
-      resolvido?.codigoTabela,
-      resolvido?.codigo
+      resolvido?.codigoServico
     ));
   }
 
@@ -215,6 +313,16 @@
     if (s.codigo) partes.push(`COD. SERVIÇO: ${s.codigo}`);
     if (s.sistema) partes.push(`SISTEMA: ${s.sistema}`);
     if (s.tipoVeiculo) partes.push(`TIPO VEÍCULO: ${s.tipoVeiculo}`);
+    return partes.join('\n') || s.sistema || '';
+  }
+
+  function textoSistemaServico(s) {
+    const partes = [];
+    if (s.codigoInterno) partes.push(`COD. INTERNO: ${s.codigoInterno}`);
+    if (s.codigoTabela) partes.push(`COD. SIAFISICO: ${s.codigoTabela}`);
+    if (!s.codigoInterno && !s.codigoTabela && s.codigo) partes.push(`COD. SERVICO: ${s.codigo}`);
+    if (s.sistema) partes.push(`SISTEMA: ${s.sistema}`);
+    if (s.tipoVeiculo) partes.push(`TIPO VEICULO: ${s.tipoVeiculo}`);
     return partes.join('\n') || s.sistema || '';
   }
 
@@ -575,6 +683,7 @@
 
     // Não insere linhas e não altera o cabeçalho. Usa somente o espaço final que o modelo já possui.
     try {
+      limparBlocoAssinaturaAgrupada(ws, labelRow, representanteRow);
       for (let r = labelRow; r <= representanteRow + 2; r++) {
         ws.getRow(r).hidden = false;
         ws.getRow(r).height = r > labelRow && r < representanteRow ? 24 : Math.max(ws.getRow(r).height || 18, 18);
@@ -619,6 +728,75 @@
     } catch (e) {
       console.warn('[PMSP XLSX] Falha ao embutir imagem da assinatura:', e?.message || e);
       setCell(ws, 'A' + (representanteRow + 3), 'Imagem da assinatura não foi embutida no XLSX. URL: ' + url);
+      return false;
+    }
+  }
+
+  async function inserirAssinaturaFinalAgrupadaExcelJS(wb, ws, assinatura, startRow) {
+    const ass = normalizarAssinaturaExportar(assinatura);
+    const nome = limparTexto(ass.nomeResponsavel);
+    const cargo = limparTexto(ass.cargo) || 'Responsavel tecnico';
+    const doc = limparTexto(ass.documento);
+    const url = limparTexto(ass.url);
+    const endRow = startRow + 5;
+
+    for (let r = startRow; r <= endRow; r++) {
+      safeUnmergeOverlaps(ws, `A${r}:H${r}`);
+      ['A','B','C','D','E','F','G','H'].forEach(col => {
+        const cell = ws.getCell(col + r);
+        cell.value = '';
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } }
+        };
+        cell.alignment = { ...(cell.alignment || {}), vertical: 'middle', wrapText: true, shrinkToFit: true };
+      });
+      ws.getRow(r).hidden = false;
+      ws.getRow(r).height = r <= startRow + 2 ? 30 : 18;
+    }
+
+    safeMerge(ws, `B${startRow}:E${startRow + 2}`);
+    ['F','G'].forEach(col => {
+      for (let r = startRow; r <= startRow + 2; r++) {
+        ws.getCell(col + r).font = { name: 'Arial', size: 8, bold: col === 'F', color: { argb: 'FF000000' } };
+        ws.getCell(col + r).alignment = { horizontal: col === 'F' ? 'right' : 'left', vertical: 'middle', wrapText: true, shrinkToFit: true };
+      }
+    });
+    setCell(ws, 'F' + startRow, 'Assinante');
+    setCell(ws, 'G' + startRow, nome || '');
+    setCell(ws, 'F' + (startRow + 1), 'Funcao');
+    setCell(ws, 'G' + (startRow + 1), cargo || '');
+    setCell(ws, 'F' + (startRow + 2), 'Documento');
+    setCell(ws, 'G' + (startRow + 2), doc || '');
+
+    if (!url) {
+      setCell(ws, 'B' + startRow, 'Imagem da assinatura nao cadastrada');
+      ws.getCell('B' + startRow).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
+      return false;
+    }
+
+    const img = await imagemUrlParaDataURLAssinatura(url);
+    if (!img) {
+      setCell(ws, 'B' + startRow, 'Imagem da assinatura nao carregou');
+      ws.getCell('B' + startRow).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
+      return false;
+    }
+
+    try {
+      const imageId = wb.addImage({ base64: img.base64, extension: img.extension });
+      ws.addImage(imageId, {
+        tl: { col: 1.25, row: startRow - 1 + 0.08 },
+        br: { col: 4.75, row: startRow + 2 + 0.78 },
+        editAs: 'oneCell'
+      });
+      return true;
+    } catch (e) {
+      console.warn('[PMSP XLSX] Falha ao embutir imagem da assinatura agrupada:', e?.message || e);
+      setCell(ws, 'B' + startRow, 'Imagem da assinatura nao foi embutida no XLSX');
+      ws.getCell('B' + startRow).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true, shrinkToFit: true };
       return false;
     }
   }
@@ -707,6 +885,20 @@
     c.value = n(value) || 0;
     c.numFmt = '0.0%';
     c.alignment = { ...(c.alignment || {}), horizontal: 'center', vertical: 'middle', shrinkToFit: true };
+  }
+
+  function congelarFormulasCompartilhadasPMSP(wb) {
+    if (!wb || typeof wb.eachSheet !== 'function') return;
+    wb.eachSheet(ws => {
+      ws.eachRow({ includeEmpty: false }, row => {
+        row.eachCell({ includeEmpty: false }, cell => {
+          const value = cell.value;
+          if (!value || typeof value !== 'object') return;
+          if (!Object.prototype.hasOwnProperty.call(value, 'formula') && !Object.prototype.hasOwnProperty.call(value, 'sharedFormula')) return;
+          cell.value = Object.prototype.hasOwnProperty.call(value, 'result') && value.result != null ? value.result : '';
+        });
+      });
+    });
   }
 
   function safeUnmerge(ws, range) {
@@ -991,10 +1183,47 @@
     return { grupos, soltos };
   }
 
+  function secaoGrupoComposicao(grupo) {
+    const servicoBase = (grupo.servicos || [])[0];
+    if (servicoBase) return classificarSecao(servicoBase);
+    const p = grupo.peca || {};
+    return classificarSecao({
+      sistema: p.ciliaGrupo || p.ciliaAgrupador || '',
+      desc: [p.desc, p.ciliaGrupo, p.ciliaAgrupador].filter(Boolean).join(' ')
+    });
+  }
+
+  function agruparComposicaoPorSecao(grupos, soltos) {
+    const mapa = new Map();
+    function secaoItem(nome) {
+      const key = limparTexto(nome || 'OUTROS SERVICOS') || 'OUTROS SERVICOS';
+      if (!mapa.has(key)) mapa.set(key, { secao: key, grupos: [], soltos: [] });
+      return mapa.get(key);
+    }
+    (grupos || []).forEach(g => secaoItem(secaoGrupoComposicao(g)).grupos.push(g));
+    (soltos || []).forEach(s => secaoItem(classificarSecao(s)).soltos.push(s));
+    return Array.from(mapa.values());
+  }
+
+  function agruparServicosSoltosPorSecao(soltos) {
+    const mapa = new Map();
+    function secaoItem(nome) {
+      const key = limparTexto(nome || 'OUTROS SERVICOS') || 'OUTROS SERVICOS';
+      if (!mapa.has(key)) mapa.set(key, { secao: key, servicos: [] });
+      return mapa.get(key);
+    }
+    (soltos || []).forEach(s => secaoItem(classificarSecao(s)).servicos.push(s));
+    return Array.from(mapa.values());
+  }
+
   function contarLinhasComposicaoOS(linhasPecas, linhasServ) {
     if (!(linhasPecas || []).length && !(linhasServ || []).length) return 0;
     const { grupos, soltos } = agruparComposicaoOS(linhasPecas, linhasServ);
-    return 2 + grupos.reduce((sum, g) => sum + 1 + g.servicos.length, 0) + (soltos.length ? 1 + soltos.length : 0);
+    const secoes = agruparComposicaoPorSecao(grupos, []);
+    const soltosSecoes = agruparServicosSoltosPorSecao(soltos);
+    const linhasComPeca = secoes.reduce((sum, sec) => sum + 1 + sec.grupos.reduce((soma, g) => soma + 1 + g.servicos.length, 0), 0);
+    const linhasSemPeca = soltosSecoes.length ? 1 + soltosSecoes.reduce((sum, sec) => sum + 1 + sec.servicos.length, 0) : 0;
+    return 2 + linhasComPeca + linhasSemPeca;
   }
 
   function bordarLinhaOS(ws, row, tipo) {
@@ -1059,7 +1288,17 @@
     return linhas.join('\n');
   }
 
-  function inserirComposicaoOS(ws, startRow, linhasPecas, linhasServ) {
+  function textoItemServico(s) {
+    const linhas = ['SERVICO'];
+    if (s.codigoInterno) linhas.push(`COD. INTERNO: ${s.codigoInterno}`);
+    if (s.codigoTabela) linhas.push(`COD. SIAFISICO: ${s.codigoTabela}`);
+    if (!s.codigoInterno && !s.codigoTabela && s.codigo) linhas.push(`COD.: ${s.codigo}`);
+    if (s.sistema) linhas.push(`SIST.: ${s.sistema}`);
+    if (s.tipoVeiculo) linhas.push(`TIPO: ${s.tipoVeiculo}`);
+    return linhas.join('\n');
+  }
+
+  function inserirComposicaoOSAntigo(ws, startRow, linhasPecas, linhasServ) {
     const totalRows = contarLinhasComposicaoOS(linhasPecas, linhasServ);
     if (!totalRows) return 0;
     const { grupos, soltos } = agruparComposicaoOS(linhasPecas, linhasServ);
@@ -1114,6 +1353,96 @@
         bordarLinhaOS(ws, row, 'servico');
         ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
         row++;
+      });
+    }
+    return totalRows;
+  }
+
+  function inserirComposicaoOS(ws, startRow, linhasPecas, linhasServ) {
+    const totalRows = contarLinhasComposicaoOS(linhasPecas, linhasServ);
+    if (!totalRows) return 0;
+    const { grupos, soltos } = agruparComposicaoOS(linhasPecas, linhasServ);
+    const secoes = agruparComposicaoPorSecao(grupos, []);
+    const soltosSecoes = agruparServicosSoltosPorSecao(soltos);
+    let row = startRow;
+    tituloBlocoOS(ws, row++, 'COMPOSIÇÃO DA O.S. POR PEÇA E SERVIÇO VINCULADO');
+    inserirCabecalhoComposicaoOS(ws, row++);
+
+    secoes.forEach(sec => {
+      limparRangeResumo(ws, row);
+      safeUnmerge(ws, `B${row}:H${row}`);
+      safeMerge(ws, `B${row}:H${row}`);
+      setCell(ws, 'B' + row, 'SEÇÃO: ' + sec.secao);
+      ws.getCell('B' + row).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, shrinkToFit: true };
+      bordarLinhaOS(ws, row, 'grupo');
+      ws.getRow(row).height = 18;
+      row++;
+
+      sec.grupos.forEach(g => {
+        const p = g.peca;
+        limparRangeResumo(ws, row);
+        setCell(ws, 'B' + row, textoItemPeca(p));
+        setCell(ws, 'D' + row, p.desc || 'PEÇA SEM DESCRIÇÃO');
+        setNumberCell(ws, 'E' + row, p.qtd, '0.##');
+        setMoneyCell(ws, 'F' + row, p.valorUnit);
+        setPercentCell(ws, 'G' + row, p.descPct);
+        setMoneyCell(ws, 'H' + row, p.total);
+        bordarLinhaOS(ws, row, 'peca');
+        ws.getRow(row).height = Math.max(24, 13 * String(ws.getCell('B' + row).value || '').split('\n').length);
+        row++;
+
+        g.servicos.forEach(s => {
+          limparRangeResumo(ws, row);
+          setCell(ws, 'B' + row, textoItemServico(s));
+          setCell(ws, 'D' + row, s.desc || 'SERVIÇO SEM DESCRIÇÃO');
+          setNumberCell(ws, 'E' + row, s.tempo, '0.00');
+          setMoneyCell(ws, 'F' + row, s.valorHora);
+          setPercentCell(ws, 'G' + row, s.descPct);
+          setMoneyCell(ws, 'H' + row, s.total);
+          bordarLinhaOS(ws, row, 'servico');
+          ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
+          row++;
+        });
+      });
+
+      (sec.soltos || []).forEach(s => {
+        limparRangeResumo(ws, row);
+        setCell(ws, 'B' + row, textoItemServico(s));
+        setCell(ws, 'D' + row, s.desc || 'SERVIÇO SEM DESCRIÇÃO');
+        setNumberCell(ws, 'E' + row, s.tempo, '0.00');
+        setMoneyCell(ws, 'F' + row, s.valorHora);
+        setPercentCell(ws, 'G' + row, s.descPct);
+        setMoneyCell(ws, 'H' + row, s.total);
+        bordarLinhaOS(ws, row, 'servico');
+        ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
+        row++;
+      });
+    });
+
+    if (soltosSecoes.length) {
+      tituloBlocoOS(ws, row++, 'SERVIÇOS SEM PEÇA VINCULADA');
+      soltosSecoes.forEach(sec => {
+        limparRangeResumo(ws, row);
+        safeUnmerge(ws, `B${row}:H${row}`);
+        safeMerge(ws, `B${row}:H${row}`);
+        setCell(ws, 'B' + row, 'SEÇÃO: ' + sec.secao);
+        ws.getCell('B' + row).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, shrinkToFit: true };
+        bordarLinhaOS(ws, row, 'grupo');
+        ws.getRow(row).height = 18;
+        row++;
+
+        sec.servicos.forEach(s => {
+          limparRangeResumo(ws, row);
+          setCell(ws, 'B' + row, textoItemServico(s));
+          setCell(ws, 'D' + row, s.desc || 'SERVIÇO SEM DESCRIÇÃO');
+          setNumberCell(ws, 'E' + row, s.tempo, '0.00');
+          setMoneyCell(ws, 'F' + row, s.valorHora);
+          setPercentCell(ws, 'G' + row, s.descPct);
+          setMoneyCell(ws, 'H' + row, s.total);
+          bordarLinhaOS(ws, row, 'servico');
+          ws.getRow(row).height = Math.max(28, 12 * String(ws.getCell('B' + row).value || '').split('\n').length);
+          row++;
+        });
       });
     }
     return totalRows;
@@ -1232,25 +1561,41 @@
     const valorHoraCliente = n(os.valorHoraOS ?? os.govValorHoraOS ?? cli.govValorHora ?? 0);
 
     const linhasServOriginal = servicos.map((s, index) => {
-      const tempo = n(s.tempo || 0);
-      const valorBrutoServico = n(s.valor || 0);
       const resolvido = U().resolvePMSPServico ? U().resolvePMSPServico(s, { veiculo, fallbackValorHora: valorHoraCliente }) : {};
-      const valorHora = n(s.valorHora || s.valorHoraSecao || resolvido.valorHora || 0) ||
-        (tempo > 0 && valorBrutoServico > 0 ? +(valorBrutoServico / tempo).toFixed(2) : 0) ||
-        valorHoraCliente;
+      const calcServico = U().calcularServicoMaoObra
+        ? U().calcularServicoMaoObra(s, cli, {
+            os,
+            descMO,
+            veiculo,
+            fallbackValorHora: valorHoraCliente,
+            usarHoraQuandoDisponivel: true
+          })
+        : {
+            tempo: n(s.tempo || 0),
+            valorHora: n(s.valorHora || s.valorHoraSecao || resolvido.valorHora || 0),
+            valorBruto: n(s.valor || s.valorBruto || 0),
+            valorFinal: +(n(s.valor || s.valorBruto || 0) * (1 - descMO)).toFixed(2)
+          };
+      const tempo = n(calcServico.tempo || 0);
+      const valorHora = n(calcServico.valorHora || 0);
       const sistemaServico = resolvido.secaoHoraLabel || s.secaoHoraLabel || s.sistemaTabela || s.sistema || '';
+      const codigoInterno = codigoInternoServicoTempa(s, resolvido);
+      const codigoTabela = codigoTabelaServicoTempa(s, resolvido);
       const codigo = codigoServicoTempa(s, resolvido);
       const tipoVeiculo = extrairTipoVeiculoTempa(s, veiculo);
-      const totalFinal = +(valorHora * tempo * (1 - descMO)).toFixed(2);
+      const valorBrutoServico = n(calcServico.valorBruto || calcServico.bruto || 0);
+      const totalFinal = n(calcServico.valorFinal || 0);
       return {
         key: 'servico-' + index,
         codigo,
+        codigoInterno,
+        codigoTabela,
         sistema: limparTexto(sistemaServico),
         tipoVeiculo,
         desc: limparTexto(s.desc || ''),
         tempo,
         valorHora,
-        bruto: +(valorHora * tempo).toFixed(2),
+        bruto: valorBrutoServico,
         descPct: descMO,
         total: totalFinal,
         relacionadoCilia: !!s.relacionadoCilia,
@@ -1344,14 +1689,113 @@
     return { tenant, linhasServ, linhasPecas, linhasServOriginal, linhasPecasOriginal, descMO, descPeca, guincho, aprovacaoInfo }; 
   }
 
-  async function exportarComExcelJS(os, cli, veiculo) {
+
+  async function exportarComposicaoExcelJS(os, cli, veiculo) {
     if (typeof ExcelJS === 'undefined') return false;
 
-    const resp = await fetch(TEMPLATE_URL, { cache: 'no-store' });
-    if (!resp.ok) throw new Error('Modelo PMSP nao encontrado: ' + TEMPLATE_URL);
+    const templateUrl = templatePMSPUrl();
+    const resp = await fetch(templateUrl, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('Modelo PMSP nao encontrado: ' + templateUrl);
     const buffer = await resp.arrayBuffer();
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
+    congelarFormulasCompartilhadasPMSP(wb);
+    const ws = wb.worksheets[0];
+
+    const { tenant, linhasServ, linhasPecas, aprovacaoInfo } = coletarDados(os, cli, veiculo);
+    const assinaturaExportar = await obterAssinaturaExportar(os, tenant);
+    const logoExportar = await obterLogoOficinaExportar(os, tenant);
+    const resumoSecoes = resumirSecoes(linhasServ);
+    const dc = dadosCliente(cli, os);
+    const dv = dadosVeiculo(veiculo, os);
+    const dt = dadosTenant(tenant);
+    const representante = dt.representante;
+
+    const composicaoRows = contarLinhasComposicaoOS(linhasPecas, linhasServ);
+    const kpiFinalRows = contarLinhasKPIFinais(resumoSecoes);
+    const aprovacaoRows = contarLinhasAprovacaoExportar(aprovacaoInfo);
+    const blocoRows = Math.max(1, composicaoRows + kpiFinalRows + aprovacaoRows);
+    limparCorpoTemplateAgrupado(ws, 18, blocoRows);
+
+    const totalGeralRow = 18 + blocoRows;
+    const vistoriaRow = totalGeralRow + 1;
+    const resumoPecasRow = totalGeralRow + 2;
+    const resumoMORow = totalGeralRow + 3;
+    const resumoTotalRow = totalGeralRow + 4;
+    const contratoRow = totalGeralRow + 5;
+    const assinaturaStartRow = contratoRow + 1;
+    const assinaturaEndRow = assinaturaStartRow + 5;
+
+    const cabecalho = dc.cabecalho || 'SECRETARIA DA SEGURANCA PUBLICA\nPOLICIA MILITAR DO ESTADO DE SAO PAULO';
+    setCell(ws, 'B1', formatarCabecalhoPM(cabecalho));
+    ws.getCell('B1').alignment = { ...(ws.getCell('B1').alignment || {}), vertical: 'middle', horizontal: 'left', wrapText: true, shrinkToFit: true };
+    setCell(ws, 'A3', `REFERENCIA: ORDEM E EXECUCAO DE SERVICOS No ${oesNumero(cli, os)}`);
+    setCell(ws, 'A5', `MARCA: ${dv.marca}`);
+    setCell(ws, 'C5', `MODELO: ${dv.modelo}`);
+    setCell(ws, 'E5', `ANO: ${dv.ano}`);
+    setCell(ws, 'G5', `PLACA: ${dv.placa}`);
+    setCell(ws, 'A6', `CHASSIS: ${dv.chassis}`);
+    setCell(ws, 'D6', `PATRIMONIO: ${dv.patrimonio}`);
+    setCell(ws, 'A7', `KM: ${dv.km}`);
+    setCell(ws, 'C7', `PREFIXO: ${dv.prefixo}`);
+    setCell(ws, 'E7', `OPM DETENTORA: ${dc.unidade}`);
+    setCell(ws, 'A9', `RAZAO SOCIAL : ${dt.razaoSocial}`);
+    setCell(ws, 'E9', `CNPJ: ${dt.cnpj}`);
+    setCell(ws, 'A10', `ENDERECO: ${dt.endereco}`);
+    setCell(ws, 'A11', `TELEFONE: ${dt.telefone}`);
+    setCell(ws, 'D11', `ORCAMENTISTA: ${dt.orcamentista}`);
+    setCell(ws, 'A12', `REPRESENTANTE LEGAL: ${representante}`);
+    setCell(ws, 'A14', `UNIDADE : ${dc.unidade}`);
+    setCell(ws, 'E14', `CNPJ: ${dc.doc}`);
+    setCell(ws, 'A15', `ENDERECO: ${dc.endereco}`);
+    setCell(ws, 'A17', `FISCAL DO CONTRATO: ${dc.fiscal}`);
+    aplicarAjustesCabecalho(ws);
+    await inserirLogoOficinaExcelJS(wb, ws, logoExportar);
+
+    inserirComposicaoOS(ws, 18, linhasPecas, linhasServ);
+    inserirKPIsFinaisOS(ws, 18 + composicaoRows, linhasPecas, linhasServ, resumoSecoes);
+    inserirResumoAprovacaoExportar(ws, 18 + composicaoRows + kpiFinalRows, aprovacaoInfo);
+
+    const totalPecas = linhasPecas.reduce((sum, p) => sum + p.total, 0);
+    const totalMO = linhasServ.reduce((sum, item) => sum + item.total, 0);
+    const contrato = +(totalPecas + totalMO).toFixed(2);
+    prepararRodape(ws, [totalGeralRow, vistoriaRow, resumoPecasRow, resumoMORow, resumoTotalRow, contratoRow]);
+    linhaResumoValor(ws, totalGeralRow, 'TOTAL GERAL', 0, { blankValue: true });
+    linhaResumoValor(ws, vistoriaRow, 'VALOR DA VISTORIA TECNICA COMPLEMENTAR AO ESCOPO DE SERVICOS', 0, { blankValue: true });
+    linhaResumoValor(ws, resumoPecasRow, 'VALOR TOTAL DE PECAS', totalPecas);
+    linhaResumoValor(ws, resumoMORow, 'VALOR TOTAL DE MAO DE OBRA', totalMO);
+    linhaResumoValor(ws, resumoTotalRow, aprovacaoInfo?.ativa ? 'TOTAL APROVADO' : 'TOTAL GERAL', contrato);
+    linhaResumoValor(ws, contratoRow, aprovacaoInfo?.ativa ? 'VALOR APROVADO / CONTRATO' : 'VALOR DO CONTRATO', contrato, { contrato: true });
+    await inserirAssinaturaFinalAgrupadaExcelJS(wb, ws, assinaturaExportar, assinaturaStartRow);
+    limparLinhasAbaixoExportar(ws, assinaturaEndRow);
+
+    ws.pageSetup = {
+      ...ws.pageSetup,
+      orientation: 'portrait',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      printArea: `A1:H${assinaturaEndRow}`
+    };
+
+    const fname = `${(dv.prefixo || String(os.id || '').slice(-6).toUpperCase() || 'OS')}_ITENS_AGRUPADOS.xlsx`;
+    const out = await wb.xlsx.writeBuffer();
+    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await salvarArquivoBlobExportar(blob, fname);
+    window.toast?.(`Itens agrupados PMSP exportados: ${fname}`, 'ok');
+    return true;
+  }
+
+  async function exportarComExcelJS(os, cli, veiculo) {
+    if (typeof ExcelJS === 'undefined') return false;
+
+    const templateUrl = templatePMSPUrl();
+    const resp = await fetch(templateUrl, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('Modelo PMSP nao encontrado: ' + templateUrl);
+    const buffer = await resp.arrayBuffer();
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buffer);
+    congelarFormulasCompartilhadasPMSP(wb);
     const ws = wb.worksheets[0];
 
     const { tenant, linhasServ, linhasPecas, aprovacaoInfo } = coletarDados(os, cli, veiculo);
@@ -1601,7 +2045,85 @@
     window.toast?.('ExcelJS nao carregou; exportado em modo compatibilidade.', 'warn');
   }
 
-  window.exportarOrcamentoPMSP = async function() {
+
+  async function exportarComposicaoFallbackSheetJS(os, cli, veiculo) {
+    if (typeof XLSX === 'undefined') throw new Error('Biblioteca XLSX nao carregou.');
+    const { tenant, linhasServ, linhasPecas, aprovacaoInfo } = coletarDados(os, cli, veiculo);
+    const resumoSecoes = resumirSecoes(linhasServ);
+    const dc = dadosCliente(cli, os);
+    const dv = dadosVeiculo(veiculo, os);
+    const dt = dadosTenant(tenant);
+    const rows = [
+      [dc.cabecalho || 'SECRETARIA DA SEGURANCA PUBLICA POLICIA MILITAR DO ESTADO DE SAO PAULO'],
+      ['PLANILHA DE COMPOSICAO DE CUSTOS'],
+      [`REFERENCIA: ORDEM E EXECUCAO DE SERVICOS No ${oesNumero(cli, os)}`],
+      ['DADOS DA VIATURA'],
+      [`MARCA: ${dv.marca}`, `MODELO: ${dv.modelo}`, `ANO: ${dv.ano}`, `PLACA: ${dv.placa}`],
+      [`CHASSIS: ${dv.chassis}`, `PATRIMONIO: ${dv.patrimonio}`],
+      [`KM: ${dv.km}`, `PREFIXO: ${dv.prefixo}`, `OPM DETENTORA: ${dc.unidade}`],
+      ['DADOS DA EMPRESA'],
+      [`RAZAO SOCIAL: ${dt.razaoSocial}`, `CNPJ: ${dt.cnpj}`],
+      [`ENDERECO: ${dt.endereco}`],
+      [`TELEFONE: ${dt.telefone}`, `ORCAMENTISTA: ${dt.orcamentista}`],
+      [`REPRESENTANTE LEGAL: ${dt.representante}`],
+      ['DADOS DO CLIENTE'],
+      [`UNIDADE: ${dc.unidade}`, `CNPJ: ${dc.doc}`],
+      [`ENDERECO: ${dc.endereco}`],
+      [`FISCAL DO CONTRATO: ${dc.fiscal}`],
+      [],
+      ['COMPOSICAO DA O.S. POR PECA E SERVICO VINCULADO'],
+      ['ITEM / CODIGO','DESCRICAO','QTD/H','UNIT./R$/H','DESC.','TOTAL']
+    ];
+    const composicao = agruparComposicaoOS(linhasPecas, linhasServ);
+    composicao.grupos.forEach(g => {
+      const p = g.peca;
+      rows.push([textoItemPeca(p), p.desc, p.qtd, p.valorUnit, p.descPct, p.total]);
+      g.servicos.forEach(item => rows.push([textoItemServico(item), item.desc, item.tempo, item.valorHora, item.descPct, item.total]));
+    });
+    if (composicao.soltos.length) {
+      rows.push(['SERVICOS GERAIS / SEM PECA VINCULADA']);
+      composicao.soltos.forEach(item => rows.push([textoItemServico(item), item.desc, item.tempo, item.valorHora, item.descPct, item.total]));
+    }
+    const brutoPecas = linhasPecas.reduce((sum, p) => sum + n(p.bruto || 0), 0);
+    const liquidoPecas = linhasPecas.reduce((sum, p) => sum + n(p.total || 0), 0);
+    const brutoMO = linhasServ.reduce((sum, item) => sum + n(item.bruto || 0), 0);
+    const liquidoMO = linhasServ.reduce((sum, item) => sum + n(item.total || 0), 0);
+    const horasMO = linhasServ.reduce((sum, item) => sum + n(item.tempo || 0), 0);
+    const total = +(liquidoPecas + liquidoMO).toFixed(2);
+    rows.push([]);
+    rows.push(['KPIs FINAIS DA O.S.']);
+    rows.push(['QTDE / VALOR BRUTO DE PECAS', `${linhasPecas.length} peca(s)`, '', '', '', brutoPecas]);
+    rows.push(['VALOR LIQUIDO DE PECAS', '', '', '', '', liquidoPecas]);
+    rows.push(['QTDE / VALOR BRUTO DE SERVICOS', `${linhasServ.length} servico(s) - ${horasMO.toFixed(2).replace('.', ',')} h`, '', '', '', brutoMO]);
+    rows.push(['VALOR LIQUIDO DE MAO DE OBRA', '', '', '', '', liquidoMO]);
+    rows.push(['TOTAL LIQUIDO / CONTRATO', '', '', '', '', total]);
+    rows.push(['TOTAL DE HORAS DE MAO DE OBRA', `${horasMO.toFixed(2).replace('.', ',')} h`, '', '', '', 0]);
+    rows.push(['TOTAL DE ITENS NA O.S.', `${linhasPecas.length} peca(s) + ${linhasServ.length} servico(s)`, '', '', '', total]);
+    if (resumoSecoes.length) {
+      rows.push([]);
+      rows.push(['RESUMO FINAL POR TIPO / SECAO DO SERVICO', '', '', '', 'HORAS', 'VALOR']);
+      resumoSecoes.forEach(([secao, item]) => rows.push([textoResumoSecao(secao, item), '', '', '', item.horas, item.total]));
+    }
+    if (aprovacaoInfo?.naoAprovados?.length) {
+      rows.push([]);
+      rows.push(['ITENS NAO APROVADOS - HISTORICO DO ORCAMENTO ORIGINAL']);
+      rows.push(['TIPO / CODIGO','DESCRICAO','QTD/H','UNIT./R$/H','DESC.','TOTAL ORIGINAL']);
+      aprovacaoInfo.naoAprovados.forEach(it => rows.push([it.labelTipo || it.tipo, it.desc || '-', it.tipo === 'peca' ? (it.qtd || 1) : (it.tempo || 0), it.valorUnit || it.valorHora || 0, 'NAO APROVADO', it.valorFinal || 0]));
+    }
+    rows.push([aprovacaoInfo?.ativa ? 'VALOR APROVADO / CONTRATO' : 'VALOR DO CONTRATO', '', '', '', '', total]);
+    rows.push([dataExtenso(dt.cidade || dc.cidade)]);
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plan1');
+    const fname = `${(dv.prefixo || String(os.id || '').slice(-6).toUpperCase() || 'OS')}_ITENS_AGRUPADOS.xlsx`;
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    await salvarArquivoBlobExportar(blob, fname);
+    window.toast?.('Itens agrupados exportados em planilha propria, sem usar formulas do template PMSP.', 'ok');
+  }
+
+  async function exportarOrcamentoPMSPModo(modo) {
     try {
       const osId = document.getElementById('osId')?.value;
       if (!osId) { window.toast?.('Salve a O.S. antes de exportar.', 'warn'); return; }
@@ -1616,12 +2138,25 @@
       }
 
       const veiculo = (window.J?.veiculos || []).find(v => v.id === os.veiculoId) || {};
-      const ok = await exportarComExcelJS(os, cli, veiculo);
-      if (!ok) await exportarFallbackSheetJS(os, cli, veiculo);
+      if (modo === 'itens_agrupados') {
+        const ok = await exportarComposicaoExcelJS(os, cli, veiculo);
+        if (!ok) throw new Error('Biblioteca ExcelJS nao carregou. A planilha agrupada oficial precisa do template PMSP.');
+      } else {
+        const ok = await exportarComExcelJS(os, cli, veiculo);
+        if (!ok) await exportarFallbackSheetJS(os, cli, veiculo);
+      }
     } catch (e) {
       console.error('[PMSP XLSX]', e);
       window.toast?.('Erro ao exportar PMSP: ' + e.message, 'err');
     }
+  }
+
+  window.exportarOrcamentoPMSP = async function() {
+    return exportarOrcamentoPMSPModo('completo');
+  };
+
+  window.exportarOrcamentoPMSPItens = async function() {
+    return exportarOrcamentoPMSPModo('itens_agrupados');
   };
 
 

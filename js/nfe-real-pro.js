@@ -1,4 +1,4 @@
-/*
+﻿/*
  * thIAguinho ERP — NFe Entrada PRO 10/10
  * Correção profissional para XML/NFe de autopeças/oficinas.
  * - Mantém o módulo financeiro existente e sobrescreve apenas o fluxo de Entrada NF.
@@ -28,6 +28,39 @@
     const n = Number(v) || 0;
     return Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
   };
+  function fatorOperacionalSugeridoNF(item){
+    const informado = Number(item?.fatorOperacional ?? item?.fatorConversao ?? 0);
+    if (Number.isFinite(informado) && informado > 0) return informado;
+    const unidade = String(item?.unidade || item?.unidadeFiscal || item?.und || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const desc = String(item?.descricao || item?.desc || item?.descricaoOriginal || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    const qtdFiscal = Number(item?.quantidadeFiscal ?? item?.qtdFiscal ?? item?.quantidade ?? item?.qtd ?? 1) || 1;
+    if (/\b(PAR|PARES|JG|JOGO)\b/.test(unidade) || /\b(PAR|PARES|JOGO)\b/.test(desc)) return 2;
+    if (qtdFiscal <= 1 && /\bDISCOS?\b/.test(desc) && /\bFREIO\b/.test(desc)) return 2;
+    return 1;
+  }
+  function quantidadeFiscalNF(item){
+    const q = Number(item?.quantidadeFiscal ?? item?.qtdFiscal ?? item?.quantidade ?? item?.qtd ?? 1);
+    return Number.isFinite(q) && q > 0 ? q : 1;
+  }
+  function quantidadeOperacionalNF(item){
+    const informada = Number(item?.quantidadeOperacional ?? item?.qtdOperacional ?? item?.quantidadeReal ?? item?.qtdReal ?? 0);
+    if (Number.isFinite(informada) && informada > 0) return informada;
+    return quantidadeFiscalNF(item) * fatorOperacionalSugeridoNF(item);
+  }
+  function unidadeFiscalNF(item){
+    return String(item?.unidadeFiscal || item?.unidade || item?.und || 'UN').trim() || 'UN';
+  }
+  function custoOperacionalNF(item){
+    const qtdOp = quantidadeOperacionalNF(item);
+    const total = Number(item?.valorLiquido ?? item?.total ?? 0) || 0;
+    if (qtdOp > 0 && total > 0) return Math.round((total / qtdOp) * 100) / 100;
+    return Number(item?.valorUnitario ?? item?.custo ?? 0) || 0;
+  }
+  function totalOperacionalNF(item, qtd){
+    const q = Number(qtd) || 0;
+    const custo = custoOperacionalNF(item);
+    return Math.round(q * custo * 100) / 100;
+  }
   function parseNum(v){
     if (v == null) return 0;
     let s = String(v).trim();
@@ -188,7 +221,12 @@
         marca: _splitProd.marca,
         ncm: getFirstText(prod, 'NCM'), cest: getFirstText(prod, 'CEST'), cfop: getFirstText(prod, 'CFOP'),
         unidade: getFirstText(prod, 'uCom') || getFirstText(prod, 'uTrib') || 'UN',
-        quantidade: q, valorUnitario: vu, valorProduto: vp, desconto: vd, valorLiquido: vItem,
+        unidadeFiscal: getFirstText(prod, 'uCom') || getFirstText(prod, 'uTrib') || 'UN',
+        quantidade: q,
+        quantidadeFiscal: q,
+        fatorOperacional: fatorOperacionalSugeridoNF({ quantidade:q, quantidadeFiscal:q, unidade:getFirstText(prod, 'uCom') || getFirstText(prod, 'uTrib') || 'UN', descricao:_splitProd.descricaoLimpa, descricaoOriginal:_splitProd.descricaoOriginal }),
+        quantidadeOperacional: q * fatorOperacionalSugeridoNF({ quantidade:q, quantidadeFiscal:q, unidade:getFirstText(prod, 'uCom') || getFirstText(prod, 'uTrib') || 'UN', descricao:_splitProd.descricaoLimpa, descricaoOriginal:_splitProd.descricaoOriginal }),
+        valorUnitario: vu, valorProduto: vp, desconto: vd, valorLiquido: vItem,
         eanTrib: getFirstText(prod, 'cEANTrib'), unidadeTrib: getFirstText(prod, 'uTrib'), quantidadeTrib: parseNum(getFirstText(prod,'qTrib')), valorUnitarioTrib: parseNum(getFirstText(prod,'vUnTrib')),
         icms, ipi, pis, cofins,
         ibsCbs: {
@@ -216,12 +254,31 @@
         vIBS: parseNum(getFirstText(total,'vIBS')), vCBS: parseNum(getFirstText(total,'vCBS')), vIBSCBS: parseNum(getFirstText(total,'vIBSCBS'))
       },
       cobranca: { numero:getFirstText(fat,'nFat'), valorOriginal:parseNum(getFirstText(fat,'vOrig')), desconto:parseNum(getFirstText(fat,'vDesc')), valorLiquido:parseNum(getFirstText(fat,'vLiq')), duplicatas },
-      pagamentos, infAdFisco:getFirstText(xml,'infAdFisco'), infCpl:getFirstText(xml,'infCpl'), rawXml:text
+      pagamentos, referencias:nodes(xml, 'refNFe').map(r => r.textContent.trim()).filter(Boolean), infAdFisco:getFirstText(xml,'infAdFisco'), infCpl:getFirstText(xml,'infCpl'), rawXml:text
     };
     return info;
   }
-  function currentOSOptions(selectedOSId){
-    const lista = (W.J?.os || []).filter(o => String(o.status || '').toLowerCase() !== 'cancelado').sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
+  function osEmAtendimentoNF(os){
+    const st = normalizeTextNF([os?.status, os?.etapa].filter(Boolean).join(' '));
+    if(!st) return true;
+    return !/(cancelad|entreg|finaliz|encerrad|recusad|arquivad|excluid)/.test(st);
+  }
+  function osBuscaConfereNF(os, busca){
+    const termo = normalizeTextNF(busca || '');
+    const placaBusca = normalizePlateNF(busca || '');
+    if(!termo && !placaBusca) return true;
+    const placa = placaDaOSNF(os);
+    if(placaBusca && placa && (placa.includes(placaBusca) || placaBusca.includes(placa))) return true;
+    return normalizeTextNF(textoBuscaOSNF(os)).includes(termo);
+  }
+  function listaOSDestinoNF(selectedOSId, busca){
+    return (W.J?.os || [])
+      .filter(o => osEmAtendimentoNF(o) || String(o.id || '') === String(selectedOSId || ''))
+      .filter(o => osBuscaConfereNF(o, busca))
+      .sort(ordenarOSDestinoNF);
+  }
+  function currentOSOptions(selectedOSId, busca){
+    const lista = listaOSDestinoNF(selectedOSId, busca);
     return lista.map(o => {
       const v = (W.J?.veiculos || []).find(x => x.id === o.veiculoId) || {};
       const c = (W.J?.clientes || []).find(x => x.id === o.clienteId) || {};
@@ -230,13 +287,53 @@
       const data = brDate((o.data || o.createdAt || o.updatedAt || '').slice(0,10));
       const status = o.status || 'em atendimento';
       const label = `${placa} — ${veic} — ${c.nome || o.cliente || 'Cliente'} — O.S. #${String(o.id||'').slice(-6).toUpperCase()} — ${status}${data ? ' — ' + data : ''}`;
-      return `<option value="${esc(o.id)}" data-placa="${esc(placa)}">${esc(label)}</option>`;
+      return `<option value="${esc(o.id)}" data-placa="${esc(placa)}" ${String(selectedOSId||'')===String(o.id)?'selected':''}>${esc(label)}</option>`;
     }).join('');
+  }
+  function destinoOptionHTMLNF(destino){
+    return `
+      <option value="estoque" ${destino==='estoque'?'selected':''}>Estoque</option>
+      <option value="os" ${destino==='os'?'selected':''}>Vincular a O.S./veículo</option>
+      <option value="placa" ${destino==='placa'?'selected':''}>Separar por placa</option>
+      <option value="garantia" ${destino==='garantia'?'selected':''}>Garantia</option>
+      <option value="devolucao" ${destino==='devolucao'?'selected':''}>Devolução</option>
+      <option value="uso_interno" ${destino==='uso_interno'?'selected':''}>Uso interno</option>
+      <option value="outro" ${destino==='outro'?'selected':''}>Outro</option>`;
+  }
+  function splitDestinoTemplateNF(split){
+    const s = split || {};
+    const destino = s.destino || s.finalidade || 'estoque';
+    const options = currentOSOptions(s.osId || '', s.vinculo || s.placa || '');
+    return `
+      <div class="nf-split-row" style="border:1px dashed rgba(125,211,252,.28);padding:8px;border-radius:3px;background:rgba(0,212,255,.035);display:grid;grid-template-columns:90px 170px minmax(220px,1fr) minmax(160px,1fr) 34px;gap:8px;align-items:end;">
+        <div><label class="j-label">Qtd real</label><input class="j-input nf-split-qtd" inputmode="decimal" value="${esc(fmtQtd(s.qtd || s.quantidade || 0))}" oninput="window._nfeProAtualizarSaldoDestino(this)"></div>
+        <div><label class="j-label">Destino</label><select class="j-select nf-split-finalidade" onchange="window._nfeProToggleDestinoSplit(this)">${destinoOptionHTMLNF(destino)}</select></div>
+        <div class="nf-split-os-wrap" style="display:${destino==='os'?'block':'none'}">
+          <label class="j-label">O.S. em atendimento</label>
+          <input class="j-input nf-split-os-busca" value="${esc(s.vinculo || s.placa || '')}" placeholder="Buscar placa / O.S. / cliente" oninput="window.nfProFiltrarOSSplit(this)" style="margin-bottom:6px;">
+          <select class="j-select nf-split-os-select" onchange="window.nfProSelecionouOSSplit(this)"><option value="">Escolha a O.S.</option>${options}</select>
+        </div>
+        <div><label class="j-label">Placa/finalidade/observação</label><input class="j-input nf-split-vinculo" value="${esc(s.vinculo || '')}" placeholder="Ex.: ABC1234, garantia, estoque parcial..."></div>
+        <button type="button" title="Remover destino" onclick="this.closest('.nf-split-row').remove();window._nfeProAtualizarSaldoDestino(this)" style="background:rgba(255,59,59,0.1);border:1px solid rgba(255,59,59,0.3);border-radius:2px;color:var(--danger);cursor:pointer;height:32px;">✕</button>
+      </div>`;
+  }
+  function destinosExtrasHTMLNF(item){
+    const arr = Array.isArray(item?.destinosOperacionais) ? item.destinosOperacionais
+      : (Array.isArray(item?.destinos) ? item.destinos : []);
+    const extras = arr.slice(1);
+    if (!extras.length) return '';
+    return extras.map(splitDestinoTemplateNF).join('');
   }
   function rowTemplate(item){
     const i = item || {};
-    const options = currentOSOptions(i.osId || '');
-    const destino = i.destino || 'estoque';
+    const qtdFiscal = quantidadeFiscalNF(i);
+    const fator = fatorOperacionalSugeridoNF(i);
+    const qtdOperacional = quantidadeOperacionalNF(i);
+    const unidade = unidadeFiscalNF(i);
+    const destinosArr = Array.isArray(i.destinosOperacionais) ? i.destinosOperacionais : (Array.isArray(i.destinos) ? i.destinos : []);
+    const destinoBase = destinosArr[0] || i;
+    const options = currentOSOptions(destinoBase.osId || i.osId || '', destinoBase.vinculo || destinoBase.placa || i.vinculo || i.placa || '');
+    const destino = destinoBase.destino || destinoBase.finalidade || i.destino || 'estoque';
     return `
       <div class="nf-real-row" style="border:1px solid var(--border);border-radius:4px;padding:10px;background:rgba(0,0,0,.08);display:grid;gap:8px;">
         <div style="display:grid;grid-template-columns:120px 130px minmax(220px,2fr) 120px 80px 105px 105px 105px 105px 34px;gap:8px;align-items:end;" class="nf-real-grid-main">
@@ -244,12 +341,18 @@
           <div><label class="j-label">Código/OEM</label><input class="j-input nf-codigo" value="${esc(i.codigoComercial||i.oem||'')}"></div>
           <div><label class="j-label">Descrição limpa da peça</label><input class="j-input nf-desc" value="${esc(i.descricao||'')}" title="Original XML: ${esc(i.descricaoOriginal||i.descricao||'')}" placeholder="Descrição da peça"></div>
           <div><label class="j-label">Marca</label><input class="j-input nf-marca" value="${esc(i.marca||'')}"></div>
-          <div><label class="j-label">Qtd</label><input class="j-input nf-qtd" inputmode="decimal" value="${esc(fmtQtd(i.quantidade||1))}" oninput="window.calcNFTotal()"></div>
+          <div><label class="j-label">Qtd fiscal</label><input class="j-input nf-qtd" inputmode="decimal" value="${esc(fmtQtd(qtdFiscal))}" oninput="window._nfeProAtualizarQuantidadeOperacional(this);window.calcNFTotal()"></div>
           <div><label class="j-label">Custo un.</label><input class="j-input nf-custo" inputmode="decimal" value="${esc(fmtBR(i.valorUnitario||0))}" oninput="window.calcNFTotal()"></div>
           <div><label class="j-label">Desc.</label><input class="j-input nf-descvalor" inputmode="decimal" value="${esc(fmtBR(i.desconto||0))}" oninput="window.calcNFTotal()"></div>
           <div><label class="j-label">Venda</label><input class="j-input nf-venda" inputmode="decimal" value="${esc(fmtBR(i.venda || ((Number(i.valorUnitario)||0)*1.5)))}"></div>
           <div><label class="j-label">EAN</label><input class="j-input nf-ean" value="${esc(i.ean||'')}"></div>
           <button type="button" title="Remover item" onclick="this.closest('.nf-real-row').remove();window.calcNFTotal()" style="background:rgba(255,59,59,0.1);border:1px solid rgba(255,59,59,0.3);border-radius:2px;color:var(--danger);cursor:pointer;height:32px;">✕</button>
+        </div>
+        <div style="display:grid;grid-template-columns:110px 110px 130px 1fr;gap:8px;align-items:end;" class="nf-real-grid-operacional">
+          <div><label class="j-label">Unid. fiscal</label><input class="j-input nf-unidade" value="${esc(unidade)}"></div>
+          <div><label class="j-label">Fator real</label><input class="j-input nf-fator-operacional" inputmode="decimal" value="${esc(fmtQtd(fator))}" oninput="window._nfeProAtualizarQuantidadeOperacional(this)"></div>
+          <div><label class="j-label">Qtd operacional</label><input class="j-input nf-qtd-operacional" inputmode="decimal" value="${esc(fmtQtd(qtdOperacional))}" oninput="window._nfeProAtualizarSaldoDestino(this)"></div>
+          <div style="font-family:var(--fm);font-size:.64rem;color:var(--muted);line-height:1.45;">Use <b>Qtd operacional</b> para pares/kits que entram como 1 item fiscal, mas viram 2 ou mais peças reais no estoque/O.S.</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;" class="nf-real-grid-fiscal">
           <div><label class="j-label">NCM</label><input class="j-input nf-ncm-input" value="${esc(i.ncm||'')}"></div>
@@ -258,17 +361,21 @@
           <div><label class="j-label">Total item XML</label><input class="j-input" value="R$ ${esc(fmtBR(i.valorLiquido || ((i.quantidade||1)*(i.valorUnitario||0)-(i.desconto||0))))}" readonly></div>
         </div>
         <div style="display:grid;grid-template-columns:170px minmax(220px,1fr) minmax(160px,1fr);gap:8px;align-items:end;" class="nf-real-grid-destino">
-          <div><label class="j-label">Destino real da peça</label><select class="j-select nf-finalidade" onchange="window._nfeProToggleDestino(this)">
-            <option value="estoque" ${destino==='estoque'?'selected':''}>Estoque</option>
-            <option value="os" ${destino==='os'?'selected':''}>Vincular a O.S./veículo</option>
-            <option value="placa" ${destino==='placa'?'selected':''}>Separar por placa</option>
-            <option value="garantia" ${destino==='garantia'?'selected':''}>Garantia</option>
-            <option value="devolucao" ${destino==='devolucao'?'selected':''}>Devolução</option>
-            <option value="uso_interno" ${destino==='uso_interno'?'selected':''}>Uso interno</option>
-            <option value="outro" ${destino==='outro'?'selected':''}>Outro</option>
-          </select></div>
-          <div class="nf-os-wrap" style="display:${destino==='os'?'block':'none'}"><label class="j-label">Selecionar O.S. em atendimento</label><select class="j-select nf-os-select"><option value="">Escolha pela placa / O.S. / cliente...</option>${options}</select></div>
-          <div><label class="j-label">Placa/finalidade/observação</label><input class="j-input nf-vinculo" value="${esc(i.vinculo||'')}" placeholder="Ex.: ABC1234, garantia, uso interno..."></div>
+          <div><label class="j-label">Destino real da peça</label><select class="j-select nf-finalidade" onchange="window._nfeProToggleDestino(this)">${destinoOptionHTMLNF(destino)}</select></div>
+          <div class="nf-os-wrap" style="display:${destino==='os'?'block':'none'}">
+            <label class="j-label">Selecionar O.S. em atendimento</label>
+            <input class="j-input nf-os-busca" value="${esc(destinoBase.vinculo || destinoBase.placa || i.vinculo || i.placa || '')}" placeholder="Buscar placa / O.S. / cliente em atendimento" oninput="window.nfProFiltrarOS(this)" style="margin-bottom:6px;">
+            <select class="j-select nf-os-select" onchange="window.nfProSelecionouOS(this)"><option value="">Escolha pela placa / O.S. / cliente...</option>${options}</select>
+            <small class="nf-os-alert" style="display:block;margin-top:4px;color:var(--muted);font-family:var(--fm);font-size:.62rem;">Lista limitada a O.S. em atendimento.</small>
+          </div>
+          <div><label class="j-label">Placa/finalidade/observação</label><input class="j-input nf-vinculo" value="${esc(destinoBase.vinculo || i.vinculo || '')}" placeholder="Ex.: ABC1234, garantia, uso interno..."></div>
+        </div>
+        <div class="nf-destinos-extra-wrap" style="display:grid;gap:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span class="nf-destinos-saldo" style="font-family:var(--fm);font-size:.64rem;color:var(--muted);">Destino principal recebe a quantidade operacional restante.</span>
+            <button type="button" class="btn-outline" style="padding:6px 10px;font-size:.62rem;" onclick="window._nfeProAdicionarDestinoSplit(this)">+ DIVIDIR DESTINO</button>
+          </div>
+          <div class="nf-destinos-split" style="display:grid;gap:8px;">${destinosExtrasHTMLNF(i)}</div>
         </div>
         <div style="font-family:var(--fm);font-size:.64rem;color:var(--muted);display:grid;grid-template-columns:repeat(4,1fr);gap:6px;" class="nf-real-tributos">
           <span>NCM: <b class="nf-ncm">${esc(i.ncm||'')}</b></span><span>CFOP: <b class="nf-cfop">${esc(i.cfop||'')}</b></span><span>CEST: <b class="nf-cest">${esc(i.cest||'')}</b></span><span>Total item: <b class="nf-total-item">R$ ${fmtBR(i.valorLiquido || ((i.quantidade||1)*(i.valorUnitario||0)-(i.desconto||0)))}</b></span>
@@ -280,7 +387,161 @@
     const row = sel.closest('.nf-real-row');
     const wrap = row?.querySelector('.nf-os-wrap');
     if(wrap) wrap.style.display = sel.value === 'os' ? 'block' : 'none';
+    if(sel.value !== 'os'){
+      const osSel = row?.querySelector('.nf-os-select');
+      const osBusca = row?.querySelector('.nf-os-busca');
+      if(osSel) osSel.value = '';
+      if(osBusca) osBusca.value = '';
+    }
+    W._nfeProAtualizarSaldoDestino(sel);
   };
+  W._nfeProToggleDestinoSplit = function(sel){
+    const split = sel?.closest?.('.nf-split-row');
+    const wrap = split?.querySelector('.nf-split-os-wrap');
+    if(wrap) wrap.style.display = sel.value === 'os' ? 'block' : 'none';
+    if(sel?.value !== 'os'){
+      const osSel = split?.querySelector('.nf-split-os-select');
+      const osBusca = split?.querySelector('.nf-split-os-busca');
+      if(osSel) osSel.value = '';
+      if(osBusca) osBusca.value = '';
+    }
+  };
+  W._nfeProAtualizarQuantidadeOperacional = function(input){
+    const row = input?.closest?.('.nf-real-row');
+    if(!row) return;
+    const q = parseNum(row.querySelector('.nf-qtd')?.value) || 0;
+    const fator = parseNum(row.querySelector('.nf-fator-operacional')?.value) || 1;
+    const qop = row.querySelector('.nf-qtd-operacional');
+    if(qop) qop.value = fmtQtd(q * fator);
+    W._nfeProAtualizarSaldoDestino(input);
+  };
+  W._nfeProAtualizarSaldoDestino = function(input){
+    const row = input?.closest?.('.nf-real-row');
+    if(!row) return;
+    const qop = parseNum(row.querySelector('.nf-qtd-operacional')?.value) || 0;
+    const extras = Array.from(row.querySelectorAll('.nf-split-qtd')).reduce((s, el) => s + (parseNum(el.value) || 0), 0);
+    const saldo = Math.round((qop - extras) * 1000) / 1000;
+    const el = row.querySelector('.nf-destinos-saldo');
+    if(el) {
+      el.textContent = saldo < 0
+        ? `Atenção: destinos extras excedem a qtd operacional em ${fmtQtd(Math.abs(saldo))}.`
+        : `Destino principal receberá ${fmtQtd(saldo)} peça(s) real(is).`;
+      el.style.color = saldo < 0 ? 'var(--danger)' : 'var(--muted)';
+    }
+  };
+  W._nfeProAdicionarDestinoSplit = function(btn){
+    const row = btn?.closest?.('.nf-real-row');
+    const box = row?.querySelector('.nf-destinos-split');
+    if(!row || !box) return;
+    box.insertAdjacentHTML('beforeend', splitDestinoTemplateNF({ qtd: 1, destino: 'estoque' }));
+    W._nfeProAtualizarSaldoDestino(row);
+  };
+  W.nfProFiltrarOS = function(input){
+    const row = input?.closest?.('.nf-real-row');
+    const sel = row?.querySelector('.nf-os-select');
+    if(!sel) return;
+    const old = sel.value;
+    const lista = listaOSDestinoNF(old, input.value || '');
+    const vinc = row.querySelector('.nf-vinculo');
+    if(vinc && input.value && (!vinc.value || normalizePlateNF(vinc.value) === normalizePlateNF(input.value))) vinc.value = String(input.value || '').toUpperCase();
+    sel.innerHTML = `<option value="">Escolha pela placa / O.S. / cliente...</option>` + lista.map(o => {
+      const v = (W.J?.veiculos || []).find(x => x.id === o.veiculoId) || {};
+      const c = (W.J?.clientes || []).find(x => x.id === o.clienteId) || {};
+      const placa = (o.placa || v.placa || 'S/PLACA').toUpperCase();
+      const veic = [v.marca, v.modelo || o.veiculo].filter(Boolean).join(' ') || 'Veiculo';
+      const data = brDate((o.data || o.createdAt || o.updatedAt || '').slice(0,10));
+      const status = o.status || 'em atendimento';
+      const label = `${placa} - ${veic} - ${c.nome || o.cliente || 'Cliente'} - O.S. #${String(o.id||'').slice(-6).toUpperCase()} - ${status}${data ? ' - ' + data : ''}`;
+      return `<option value="${esc(o.id)}" data-placa="${esc(placa)}" ${String(old||'')===String(o.id)?'selected':''}>${esc(label)}</option>`;
+    }).join('');
+    if(old && Array.from(sel.options).some(opt => opt.value === old)) sel.value = old;
+    const alert = row.querySelector('.nf-os-alert');
+    if(alert) alert.textContent = lista.length ? `${lista.length} O.S. em atendimento encontrada(s).` : 'Nenhuma O.S. em atendimento encontrada para esta busca.';
+  };
+  W.nfProSelecionouOS = function(sel){
+    const row = sel?.closest?.('.nf-real-row');
+    const os = (W.J?.os || []).find(o => String(o.id || '') === String(sel?.value || ''));
+    if(!row || !os) return;
+    const placa = placaDaOSNF(os);
+    const busca = row.querySelector('.nf-os-busca');
+    if(busca) busca.value = placa || busca.value || '';
+    const vinc = row.querySelector('.nf-vinculo');
+    if(vinc) vinc.value = [placa, 'OS ' + String(os.id || '').slice(-6).toUpperCase()].filter(Boolean).join(' / ');
+  };
+  W.nfProFiltrarOSSplit = function(input){
+    const split = input?.closest?.('.nf-split-row');
+    const sel = split?.querySelector('.nf-split-os-select');
+    if(!sel) return;
+    const old = sel.value;
+    const lista = listaOSDestinoNF(old, input.value || '');
+    const vinc = split.querySelector('.nf-split-vinculo');
+    if(vinc && input.value && (!vinc.value || normalizePlateNF(vinc.value) === normalizePlateNF(input.value))) vinc.value = String(input.value || '').toUpperCase();
+    sel.innerHTML = `<option value="">Escolha a O.S.</option>` + lista.map(o => {
+      const v = (W.J?.veiculos || []).find(x => x.id === o.veiculoId) || {};
+      const c = (W.J?.clientes || []).find(x => x.id === o.clienteId) || {};
+      const placa = (o.placa || v.placa || 'S/PLACA').toUpperCase();
+      const veic = [v.marca, v.modelo || o.veiculo].filter(Boolean).join(' ') || 'Veiculo';
+      const status = o.status || 'em atendimento';
+      const label = `${placa} - ${veic} - ${c.nome || o.cliente || 'Cliente'} - O.S. #${String(o.id||'').slice(-6).toUpperCase()} - ${status}`;
+      return `<option value="${esc(o.id)}" data-placa="${esc(placa)}" ${String(old||'')===String(o.id)?'selected':''}>${esc(label)}</option>`;
+    }).join('');
+    if(old && Array.from(sel.options).some(opt => opt.value === old)) sel.value = old;
+  };
+  W.nfProSelecionouOSSplit = function(sel){
+    const split = sel?.closest?.('.nf-split-row');
+    const os = (W.J?.os || []).find(o => String(o.id || '') === String(sel?.value || ''));
+    if(!split || !os) return;
+    const placa = placaDaOSNF(os);
+    const busca = split.querySelector('.nf-split-os-busca');
+    if(busca) busca.value = placa || busca.value || '';
+    const vinc = split.querySelector('.nf-split-vinculo');
+    if(vinc) vinc.value = [placa, 'OS ' + String(os.id || '').slice(-6).toUpperCase()].filter(Boolean).join(' / ');
+  };
+  function formaPagamentoNFNorm(forma){
+    return String(forma || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+  function formaPagamentoNFParcelavel(forma){
+    const f = formaPagamentoNFNorm(forma);
+    return f.includes('boleto') || f.includes('parcelado') || f.includes('credito');
+  }
+  function formaPagamentoNFAVista(forma){
+    const f = formaPagamentoNFNorm(forma);
+    return f.includes('pix') || f.includes('dinheiro') || f.includes('debito');
+  }
+  function ensureFormaPagamentoNFOptions(){
+    const sel = $('nfPgtoForma');
+    if(!sel) return;
+    const atual = sel.value || 'Dinheiro';
+    const opts = [
+      ['Dinheiro','Dinheiro'],
+      ['PIX','PIX'],
+      ['Cartão de Débito','Cartão de Débito'],
+      ['Cartão de Crédito','Cartão de Crédito'],
+      ['Boleto','Boleto (Pendente)'],
+      ['Parcelado','Parcelado (Títulos)'],
+      ['AgrupamentoPeriodo','Agrupamento por período']
+    ];
+    opts.forEach(([value,label]) => {
+      if(!sel.querySelector(`option[value="${value}"]`)){
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(value)}">${esc(label)}</option>`);
+      }
+    });
+    if(atual && sel.querySelector(`option[value="${atual}"]`)) sel.value = atual;
+  }
+  function ensureParcelasNFOptions(minParcelas){
+    const sel = $('nfParcelas');
+    if(!sel) return;
+    const atual = parseInt(sel.value || '1', 10) || 1;
+    const limite = Math.max(10, parseInt(minParcelas || 0, 10) || 0);
+    const desejado = Math.max(limite, atual);
+    sel.innerHTML = '';
+    for(let i=1;i<=desejado;i++){
+      sel.insertAdjacentHTML('beforeend', `<option value="${i}">${i}x</option>`);
+    }
+    sel.value = String(Math.min(Math.max(atual, 1), desejado));
+  }
   function renderParcels(dups){
     let box = $('nfParcelasBox');
     if(!box){
@@ -294,17 +555,47 @@
     box.style.display='block';
     box.innerHTML = `<div style="font-family:var(--fd);font-weight:800;margin-bottom:8px;color:var(--accent)">DUPLICATAS / BOLETOS DA NF</div>` + arr.map((d,idx)=>`
       <div class="nf-parcela-row" style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:6px;align-items:end;">
-        <div><label class="j-label">Parc.</label><input class="j-input nf-parc-num" value="${esc(d.numero || String(idx+1).padStart(3,'0'))}"></div>
-        <div><label class="j-label">Vencimento</label><input type="date" class="j-input nf-parc-venc" value="${esc(d.vencimento || '')}"></div>
-        <div><label class="j-label">Valor</label><input class="j-input nf-parc-valor" inputmode="decimal" value="${esc(fmtBR(d.valor||0))}"></div>
+        <div><label class="j-label">Parc.</label><input class="j-input nf-parc-num" value="${esc(d.numero || String(idx+1).padStart(3,'0'))}" oninput="this.closest('#nfParcelasBox').dataset.manualEdit='1'"></div>
+        <div><label class="j-label">Vencimento</label><input type="date" class="j-input nf-parc-venc" value="${esc(d.vencimento || '')}" onchange="this.closest('#nfParcelasBox').dataset.manualEdit='1'"></div>
+        <div><label class="j-label">Valor</label><input class="j-input nf-parc-valor" inputmode="decimal" value="${esc(fmtBR(d.valor||0))}" oninput="this.closest('#nfParcelasBox').dataset.manualEdit='1'"></div>
       </div>`).join('');
   }
+  function ensureAgrupamentoPeriodoBox(){
+    let box = $('nfAgrupamentoPeriodoBox');
+    if(!box){
+      const div = D.createElement('div');
+      div.id = 'nfAgrupamentoPeriodoBox';
+      div.style.cssText = 'margin-top:10px;border:1px solid var(--border);background:rgba(0,212,255,.055);border-radius:4px;padding:10px;display:none;';
+      const anchor = $('nfParcelasBox') || $('divParcelasNF')?.parentElement || $('containerItensNF')?.parentElement;
+      anchor?.insertAdjacentElement('afterend', div);
+      box = div;
+    }
+    box.innerHTML = `
+      <div style="font-family:var(--fd);font-weight:800;margin-bottom:8px;color:var(--cyan)">AGRUPAMENTO POR FORNECEDOR / PERIODO</div>
+      <div class="form-row cols-3">
+        <div class="form-group"><label class="j-label">Periodo de agrupamento</label><input type="number" inputmode="numeric" class="j-input" id="nfAgrPeriodoDias" min="1" step="1" value="${esc($('nfAgrPeriodoDias')?.value || '7')}"></div>
+        <div class="form-group"><label class="j-label">Vencimento do boleto agrupado</label><input type="date" class="j-input" id="nfAgrVenc" value="${esc($('nfAgrVenc')?.value || getVal('nfVenc') || isoToday())}"></div>
+        <div class="form-group"><label class="j-label">Status inicial</label><select class="j-select" id="nfAgrStatus"><option value="Pendente">Pendente</option><option value="Aguardando Boleto">Aguardando Boleto</option></select></div>
+      </div>
+      <small style="display:block;color:var(--muted);font-family:var(--fm);font-size:.64rem;">A compra fica marcada para somar com outras compras do mesmo fornecedor no mesmo periodo. O vencimento informado e o vencimento do boleto consolidado.</small>
+    `;
+    return box;
+  }
+  function mostrarAgrupamentoPeriodoNF(show){
+    const box = ensureAgrupamentoPeriodoBox();
+    box.style.display = show ? 'block' : 'none';
+  }
   function gerarParcelasManuais(){
+    ensureFormaPagamentoNFOptions();
+    ensureParcelasNFOptions();
+    const boxParcelas = $('nfParcelasBox');
+    if(boxParcelas) boxParcelas.dataset.manualEdit = '';
     const forma = getVal('nfPgtoForma');
-    if(!['Boleto','Parcelado'].includes(forma)){ renderParcels([]); return; }
+    if(forma === 'AgrupamentoPeriodo'){ renderParcels([]); mostrarAgrupamentoPeriodoNF(true); return; }
+    if(!formaPagamentoNFParcelavel(forma)){ renderParcels([]); return; }
     const n = parseInt(getVal('nfParcelas') || '1',10) || 1;
     const base = getVal('nfVenc') || isoToday();
-    const total = calcTotalNumber();
+    const total = calcTotaisNF().totalFiscal;
     const dups = [];
     const baseDate = new Date(base + 'T12:00:00');
     for(let i=0;i<n;i++){
@@ -327,18 +618,23 @@
     return Math.round(total*100)/100;
   }
   W.calcNFTotal = function(){
-    const total = calcTotalNumber();
+    const totais = calcTotaisNF();
+    const total = totais.totalFiscal;
     const el = $('nfTotal'); if(el) el.textContent = fmtBR(total);
     const current = W._nfeProData;
-    if(current && current.totais && current.totais.vNF && Math.abs(total - current.totais.vNF) > 0.02){
-      if(el) el.title = `Atenção: total dos itens (${fmtBR(total)}) difere do total fiscal da NF (${fmtBR(current.totais.vNF)}).`;
+    if(current && current.totais && current.totais.vNF && Math.abs(totais.totalItens - current.totais.vNF) > 0.02){
+      if(el) el.title = `Atenção: total dos itens (${fmtBR(totais.totalItens)}) difere do total fiscal da NF (${fmtBR(current.totais.vNF)}). O financeiro usa o total fiscal.`;
     }
-    if($('nfParcelasBox')?.style.display === 'block' && !(W._nfeProData?.cobranca?.duplicatas || []).length) gerarParcelasManuais();
+    const boxParcelas = $('nfParcelasBox');
+    if(boxParcelas?.style.display === 'block' && boxParcelas.dataset.manualEdit !== '1' && !(W._nfeProData?.cobranca?.duplicatas || []).length) gerarParcelasManuais();
   };
   W.checkPgtoNF = function(){
+    ensureFormaPagamentoNFOptions();
+    ensureParcelasNFOptions();
     const forma = getVal('nfPgtoForma');
-    if($('divParcelasNF')) $('divParcelasNF').style.display = ['Parcelado','Boleto'].includes(forma) ? 'block' : 'none';
-    if(['Parcelado','Boleto'].includes(forma)) gerarParcelasManuais(); else renderParcels([]);
+    if($('divParcelasNF')) $('divParcelasNF').style.display = formaPagamentoNFParcelavel(forma) ? 'block' : 'none';
+    mostrarAgrupamentoPeriodoNF(forma === 'AgrupamentoPeriodo');
+    if(formaPagamentoNFParcelavel(forma) || forma === 'AgrupamentoPeriodo') gerarParcelasManuais(); else renderParcels([]);
   };
   function preencherFornecedorTemporario(fornec){
     if(!$('nfFornec') || !fornec) return;
@@ -367,31 +663,241 @@
       Natureza: <b>${esc(nfe.natureza)}</b> · Protocolo: <b>${esc(nfe.protocolo)}</b> · Status: <b>${esc(nfe.statusAutorizacao)} ${esc(nfe.motivoAutorizacao)}</b><br>
       Produtos: <b>R$ ${fmtBR(nfe.totais.vProd)}</b> · Desc.: <b>R$ ${fmtBR(nfe.totais.vDesc)}</b> · IPI: <b>R$ ${fmtBR(nfe.totais.vIPI)}</b> · Total NF: <b>R$ ${fmtBR(nfe.totais.vNF)}</b>`;
   }
+  function ensureTotaisFiscaisBoxNF(){
+    let box = $('nfTotaisFiscaisBox');
+    if(!box){
+      box = D.createElement('div');
+      box.id = 'nfTotaisFiscaisBox';
+      box.style.cssText = 'border:1px solid rgba(255,184,0,.28);background:rgba(255,184,0,.045);border-radius:4px;padding:10px;margin:10px 0;font-family:var(--fm);font-size:.72rem;';
+      const anchor = $('containerItensNF')?.parentElement;
+      anchor?.insertAdjacentElement('afterend', box);
+    }
+    if(!box.dataset.rendered){
+      box.dataset.rendered = '1';
+      box.innerHTML = `
+      <div style="font-family:var(--fd);font-weight:800;margin-bottom:8px;color:var(--warn)">TOTAIS FISCAIS / DESPESAS ACESSORIAS</div>
+      <div class="form-row cols-5" style="align-items:end;margin:0;">
+        <div class="form-group" style="margin:0;"><label class="j-label">Frete</label><input class="j-input" id="nfFrete" inputmode="decimal" value="${esc($('nfFrete')?.value || '0,00')}" oninput="window._nfeTotalFiscalManual=false;window.calcNFTotal()"></div>
+        <div class="form-group" style="margin:0;"><label class="j-label">Seguro</label><input class="j-input" id="nfSeguro" inputmode="decimal" value="${esc($('nfSeguro')?.value || '0,00')}" oninput="window._nfeTotalFiscalManual=false;window.calcNFTotal()"></div>
+        <div class="form-group" style="margin:0;"><label class="j-label">Outras despesas</label><input class="j-input" id="nfOutrasDespesas" inputmode="decimal" value="${esc($('nfOutrasDespesas')?.value || '0,00')}" oninput="window._nfeTotalFiscalManual=false;window.calcNFTotal()"></div>
+        <div class="form-group" style="margin:0;"><label class="j-label">Desconto fiscal extra</label><input class="j-input" id="nfDescontoFiscal" inputmode="decimal" value="${esc($('nfDescontoFiscal')?.value || '0,00')}" oninput="window._nfeTotalFiscalManual=false;window.calcNFTotal()"></div>
+        <div class="form-group" style="margin:0;"><label class="j-label">Total fiscal da NF</label><input class="j-input" id="nfTotalFiscal" inputmode="decimal" value="${esc($('nfTotalFiscal')?.value || '0,00')}" oninput="window._nfeTotalFiscalManual=true;window.calcNFTotal()" title="Use o total fiscal real do XML ou da nota manual. O financeiro usa este valor."></div>
+      </div>
+      <small id="nfTotaisFiscaisHint" style="display:block;margin-top:8px;color:var(--muted);font-family:var(--fm);font-size:.64rem;">Total fiscal = itens + frete + seguro + outras despesas - desconto fiscal extra. XML preserva o total fiscal original.</small>`;
+    }
+    return box;
+  }
+  function setTotaisFiscaisNF(totais, opts = {}){
+    ensureTotaisFiscaisBoxNF();
+    setVal('nfFrete', fmtBR(totais?.vFrete || totais?.frete || 0));
+    setVal('nfSeguro', fmtBR(totais?.vSeg || totais?.seguro || 0));
+    setVal('nfOutrasDespesas', fmtBR(totais?.vOutro || totais?.outrasDespesas || 0));
+    setVal('nfDescontoFiscal', fmtBR(totais?.descontoFiscalExtra || 0));
+    const totalFiscal = Number(totais?.vNF ?? totais?.totalNF ?? 0) || 0;
+    if(totalFiscal || opts.forceTotal) setVal('nfTotalFiscal', fmtBR(totalFiscal));
+    W._nfeTotalFiscalManual = opts.manualTotal === true;
+  }
+  function calcTotaisNF(){
+    ensureTotaisFiscaisBoxNF();
+    const totalItens = calcTotalNumber();
+    const frete = parseNum($('nfFrete')?.value);
+    const seguro = parseNum($('nfSeguro')?.value);
+    const outras = parseNum($('nfOutrasDespesas')?.value);
+    const descontoFiscal = parseNum($('nfDescontoFiscal')?.value);
+    const calculado = Math.max(totalItens + frete + seguro + outras - descontoFiscal, 0);
+    if(!W._nfeTotalFiscalManual) setVal('nfTotalFiscal', fmtBR(calculado));
+    const totalFiscal = parseNum($('nfTotalFiscal')?.value) || calculado;
+    const hint = $('nfTotaisFiscaisHint');
+    if(hint) hint.textContent = `Itens: R$ ${fmtBR(totalItens)} | Frete: R$ ${fmtBR(frete)} | Seguro: R$ ${fmtBR(seguro)} | Outras: R$ ${fmtBR(outras)} | Desconto extra: R$ ${fmtBR(descontoFiscal)} | Total fiscal usado no financeiro: R$ ${fmtBR(totalFiscal)}`;
+    return {
+      totalItens: Math.round(totalItens * 100) / 100,
+      frete: Math.round(frete * 100) / 100,
+      seguro: Math.round(seguro * 100) / 100,
+      outrasDespesas: Math.round(outras * 100) / 100,
+      descontoFiscalExtra: Math.round(descontoFiscal * 100) / 100,
+      totalCalculado: Math.round(calculado * 100) / 100,
+      totalFiscal: Math.round(totalFiscal * 100) / 100
+    };
+  }
+  W.thiaNFSetTotaisFiscais = setTotaisFiscaisNF;
+  W.thiaNFCalcTotaisFiscais = calcTotaisNF;
+  function ensureTipoOperacaoNF(nfe){
+    let box = $('nfTipoOperacaoBox');
+    if(!box){
+      box = D.createElement('div'); box.id='nfTipoOperacaoBox';
+      box.style.cssText='border:1px solid rgba(0,212,255,.20);background:rgba(0,212,255,.045);border-radius:4px;padding:10px;margin:10px 0;font-family:var(--fm);font-size:.72rem;';
+      $('containerItensNF')?.parentElement?.insertAdjacentElement('beforebegin', box);
+    }
+    const natureza = nfe?.natureza ? `<br><span style="color:var(--muted);">Natureza XML: <b>${esc(nfe.natureza)}</b></span>` : '';
+    box.innerHTML = `
+      <div class="form-row cols-2" style="align-items:end;">
+        <div class="form-group" style="margin:0;">
+          <label class="j-label">Tipo da nota</label>
+          <select class="j-select" id="nfTipoOperacao" onchange="window.nfeProTipoOperacaoChanged && window.nfeProTipoOperacaoChanged()">
+            <option value="entrada">Nota de entrada / compra</option>
+            <option value="saida">Nota de saída</option>
+            <option value="devolucao">Nota de devolução</option>
+            <option value="garantia">Nota de garantia</option>
+            <option value="remessa">Nota de remessa</option>
+            <option value="outro">Outro tipo de nota</option>
+          </select>
+        </div>
+        <div style="color:var(--muted2);line-height:1.45;">O XML não muda o tipo sozinho. Para abater estoque/NF original, selecione <b>Nota de devolução</b>.${natureza}</div>
+      </div>`;
+    if(!$('nfTipoOperacao')?.value) $('nfTipoOperacao').value = 'entrada';
+    return box;
+  }
+  function setTipoOperacaoNF(tipo){
+    ensureTipoOperacaoNF(W._nfeProData || null);
+    const el = $('nfTipoOperacao');
+    if(el) el.value = tipo || 'entrada';
+  }
+  function tipoOperacaoNF(){
+    return String($('nfTipoOperacao')?.value || 'entrada').toLowerCase().trim() || 'entrada';
+  }
+  W.nfeProTipoOperacaoChanged = function(){
+    renderDevolucaoBox(W._nfeProData || null);
+  };
+  function renderDevolucaoBox(nfe){
+    let box = $('nfDevolucaoBox');
+    if(!box){
+      box = D.createElement('div'); box.id='nfDevolucaoBox';
+      box.style.cssText='border:1px solid rgba(255,184,0,.55);background:rgba(255,184,0,.08);border-radius:4px;padding:10px;margin:10px 0;font-family:var(--fm);font-size:.72rem;line-height:1.55;';
+      $('containerItensNF')?.parentElement?.insertAdjacentElement('beforebegin', box);
+    }
+    if(!isNFDevolucao(nfe, nfe?.itens || [])){ box.innerHTML=''; box.style.display='none'; return; }
+    const refs = Array.isArray(nfe?.referencias) ? nfe.referencias : [];
+    const candidatas = (W.J?.notasFiscaisEntrada || []).filter(n => {
+      if(String(n.tipo || '').toLowerCase().includes('devolucao') || n.excluidaAuditada) return false;
+      if(refs.length && refs.includes(n.chave)) return true;
+      const cnpjA = onlyDigits(n.fornecedorSnapshot?.cnpj || n.fornecedorCNPJ || n.cnpj || '');
+      const cnpjB = onlyDigits(nfe?.fornecedor?.cnpj || '');
+      return cnpjA && cnpjB && cnpjA === cnpjB;
+    });
+    const original = candidatas.find(n => refs.includes(n.chave)) || candidatas[0] || null;
+    box.style.display='block';
+    box.innerHTML = `
+      <b style="color:var(--warn)">NF DE DEVOLUCAO / ESTORNO DE COMPRA</b><br>
+      ${refs.length ? `Chave(s) referenciada(s) no XML: <b>${esc(refs.join(', '))}</b><br>` : 'XML sem chave referenciada. Selecione manualmente a NF original.<br>'}
+      <div class="form-row cols-2" style="margin-top:8px;">
+        <div class="form-group"><label class="j-label">NF original para abater</label><select class="j-select" id="nfDevolucaoOriginalId">
+          <option value="">Selecione a NF original</option>
+          ${candidatas.map(n => `<option value="${esc(n.id)}" ${original && n.id === original.id ? 'selected' : ''}>NF ${esc(n.numero || 's/n')} - ${esc(n.fornecedorSnapshot?.nome || n.fornecedorNome || '')} - R$ ${fmtBR(n.totalNF || n.totalItens || 0)}</option>`).join('')}
+        </select></div>
+        <div class="form-group"><label class="j-label">Motivo/observacao</label><input class="j-input" id="nfDevolucaoMotivo" value="Devolucao de mercadoria ao fornecedor"></div>
+      </div>
+      <div style="margin-top:8px;color:var(--muted);">Ao salvar, o sistema grava a NF de devolucao, marca os itens devolvidos na NF original, baixa estoque/vinculos quando encontrados e cria credito/abatimento financeiro auditado.</div>`;
+  }
+  function cnpjFornecedorNF(nfe){
+    return onlyDigits(nfe?.fornecedor?.cnpj || nfe?.fornecedorCNPJ || nfe?.cnpj || '');
+  }
+  async function buscarNFeDuplicada(nfe){
+    if(!W.db || !W.J?.tid || !nfe) return null;
+    const cols = ['notas_fiscais_entrada','notasFiscaisEntrada','nfe_entradas'];
+    const chave = String(nfe.chave || '').trim();
+    const numero = String(nfe.numero || '').trim();
+    const serie = String(nfe.serie || '').trim();
+    const cnpj = cnpjFornecedorNF(nfe);
+    for(const col of cols){
+      try{
+        if(chave){
+          const snap = await W.db.collection(col).where('tenantId','==',W.J.tid).where('chave','==',chave).limit(3).get();
+          if(!snap.empty) return { collection:col, id:snap.docs[0].id, data:snap.docs[0].data(), motivo:'chave' };
+        }
+      }catch(e){ console.warn('[NFe PRO dup chave]', col, e.message); }
+      try{
+        if(numero){
+          const snap = await W.db.collection(col).where('tenantId','==',W.J.tid).where('numero','==',numero).limit(10).get();
+          const found = snap.docs.find(d => {
+            const x = d.data() || {};
+            const xSerie = String(x.serie || '').trim();
+            const xCnpj = onlyDigits(x.fornecedorSnapshot?.cnpj || x.fornecedorCNPJ || x.cnpj || '');
+            const mesmaSerie = !serie || !xSerie || xSerie === serie;
+            const mesmoCnpj = !cnpj || !xCnpj || xCnpj === cnpj;
+            return mesmaSerie && mesmoCnpj;
+          });
+          if(found) return { collection:col, id:found.id, data:found.data(), motivo:'numero_serie_cnpj' };
+        }
+      }catch(e){ console.warn('[NFe PRO dup numero]', col, e.message); }
+    }
+    return null;
+  }
+  function limparTelaNFeDuplicada(){
+    W._nfeProData = null;
+    if($('containerItensNF')) $('containerItensNF').innerHTML = '';
+    if($('nfTotal')) $('nfTotal').textContent = '0,00';
+    renderParcels([]);
+  }
+  function mostrarNFeDuplicada(nfe, dup){
+    limparTelaNFeDuplicada();
+    renderFiscalResumo(nfe);
+    let box = $('nfDuplicadaAviso');
+    if(!box){
+      box = D.createElement('div');
+      box.id = 'nfDuplicadaAviso';
+      box.style.cssText = 'border:1px solid rgba(255,184,0,.45);background:rgba(255,184,0,.08);border-radius:4px;padding:12px;margin:10px 0;font-family:var(--fm);font-size:.72rem;line-height:1.55;color:var(--warn);';
+      $('containerItensNF')?.parentElement?.insertAdjacentElement('beforebegin', box);
+    }
+    const d = dup?.data || {};
+    const fornecedor = d.fornecedorSnapshot?.nome || d.fornecedorNome || nfe?.fornecedor?.nome || 'Fornecedor';
+    box.style.display = 'block';
+    box.innerHTML = `
+      <b>NF-E JA IMPORTADA - REIMPORTACAO BLOQUEADA</b><br>
+      NF ${esc(nfe?.numero || d.numero || '-')} / Serie ${esc(nfe?.serie || d.serie || '-')} - ${esc(fornecedor)}<br>
+      Chave: <b>${esc(nfe?.chave || d.chave || '-')}</b><br>
+      Importada em: ${esc((d.createdAt || d.dataNF || '').slice(0,10) || 'data nao registrada')} - Colecao: ${esc(dup?.collection || '-')} - Motivo: ${esc(dup?.motivo || 'duplicidade')}<br>
+      <button type="button" class="btn-outline" style="margin-top:8px;" onclick="window.abrirNFeDuplicadaExistente('${esc(dup?.collection || '')}','${esc(dup?.id || '')}')">ABRIR NOTA EXISTENTE</button>`;
+    if(typeof W.toast === 'function') W.toast(`NF-e ${nfe?.numero || ''} ja importada. Reimportacao bloqueada para nao duplicar estoque/financeiro.`, 'warn');
+  }
+  W.abrirNFeDuplicadaExistente = function(col, id){
+    if(!id) return;
+    if(col === 'notas_fiscais_entrada' && typeof W.editarDocFiscal === 'function'){
+      W.editarDocFiscal(id);
+      return;
+    }
+    if(typeof W.toast === 'function') W.toast('Nota localizada em colecao legada: ' + col + '. Abra pela busca fiscal pelo numero/chave.', 'warn');
+  };
   W.prepNF = function(){
     W._nfeProData = null;
+    const dup = $('nfDuplicadaAviso'); if(dup) { dup.style.display='none'; dup.innerHTML=''; }
     setVal('nfNumero',''); setVal('nfData', isoToday()); setVal('nfVenc','');
     if($('containerItensNF')) $('containerItensNF').innerHTML = '';
     if($('nfTotal')) $('nfTotal').textContent = '0,00';
-    if($('nfPgtoForma')) $('nfPgtoForma').value = 'Dinheiro';
-    if($('nfParcelas')) { if(!$('nfParcelas').querySelector('option[value="1"]')) $('nfParcelas').insertAdjacentHTML('afterbegin','<option value="1">1x</option>'); $('nfParcelas').value='1'; $('nfParcelas').onchange = gerarParcelasManuais; }
+    if($('nfPgtoForma')) {
+      ensureFormaPagamentoNFOptions();
+      $('nfPgtoForma').value = 'Dinheiro';
+    }
+    if($('nfParcelas')) { ensureParcelasNFOptions(); $('nfParcelas').value='1'; $('nfParcelas').onchange = gerarParcelasManuais; }
     if($('nfVenc')) $('nfVenc').onchange = gerarParcelasManuais;
+    setTotaisFiscaisNF({ vFrete:0, vSeg:0, vOutro:0, descontoFiscalExtra:0, vNF:0 }, { manualTotal:false, forceTotal:true });
+    mostrarAgrupamentoPeriodoNF(false);
     if(typeof W.popularSelects === 'function') W.popularSelects();
-    renderFiscalResumo(null); renderParcels([]); W.adicionarItemNF(); W.checkPgtoNF();
+    ensureTipoOperacaoNF(null); setTipoOperacaoNF('entrada');
+    renderFiscalResumo(null); renderDevolucaoBox(null); renderParcels([]); W.adicionarItemNF(); W.checkPgtoNF();
   };
   W.lerXMLNFe = function(event){
     const file = event?.target?.files?.[0]; if(!file) return;
     const r = new FileReader();
-    r.onload = function(ev){
+    r.onload = async function(ev){
       try{
         const nfe = parseNFeXML(String(ev.target.result || ''));
+        const duplicada = await buscarNFeDuplicada(nfe);
+        if(duplicada){
+          mostrarNFeDuplicada(nfe, duplicada);
+          return;
+        }
+        const dup = $('nfDuplicadaAviso'); if(dup) { dup.style.display='none'; dup.innerHTML=''; }
         W._nfeProData = nfe;
         setVal('nfNumero', nfe.numero); setVal('nfData', nfe.dataEmissao || isoToday());
+        setTotaisFiscaisNF(nfe.totais || {}, { manualTotal:true, forceTotal:true });
         preencherFornecedorTemporario(nfe.fornecedor);
         if($('containerItensNF')) $('containerItensNF').innerHTML = nfe.itens.map(rowTemplate).join('');
+        ensureTipoOperacaoNF(nfe); setTipoOperacaoNF('entrada');
         renderFiscalResumo(nfe);
+        renderDevolucaoBox(nfe);
         if(nfe.cobranca.duplicatas.length){
           if($('nfPgtoForma')) $('nfPgtoForma').value = 'Boleto';
-          if($('nfParcelas')) { if(!$('nfParcelas').querySelector(`option[value="${nfe.cobranca.duplicatas.length}"]`)) $('nfParcelas').insertAdjacentHTML('beforeend', `<option value="${nfe.cobranca.duplicatas.length}">${nfe.cobranca.duplicatas.length}x</option>`); $('nfParcelas').value = String(nfe.cobranca.duplicatas.length); }
+          if($('nfParcelas')) { ensureParcelasNFOptions(nfe.cobranca.duplicatas.length); $('nfParcelas').value = String(nfe.cobranca.duplicatas.length); }
           setVal('nfVenc', nfe.cobranca.duplicatas[0].vencimento || '');
           renderParcels(nfe.cobranca.duplicatas);
         } else {
@@ -412,13 +918,60 @@
     if($('containerItensNF')) $('containerItensNF').insertAdjacentHTML('beforeend', rowTemplate(item || {descricao:'', quantidade:1, valorUnitario:0, desconto:0, venda:0, codigo:'', ean:'', ncm:'', cfop:'', cest:'', destino:'estoque'}));
     W.calcNFTotal();
   };
+  function destinoFromMainRowNF(row, qtd){
+    const destinoAtual = row.querySelector('.nf-finalidade')?.value || 'estoque';
+    const osSel = row.querySelector('.nf-os-select');
+    const osId = destinoAtual === 'os' ? (osSel?.value || '') : '';
+    const osOpt = destinoAtual === 'os' ? osSel?.selectedOptions?.[0] : null;
+    const vinculoLivre = row.querySelector('.nf-vinculo')?.value || '';
+    return {
+      qtd,
+      quantidade: qtd,
+      destino: destinoAtual,
+      finalidade: destinoAtual,
+      osId,
+      placa: destinoAtual === 'os' ? (osOpt?.dataset?.placa || '') : (destinoAtual === 'placa' ? normalizePlateNF(vinculoLivre) : ''),
+      vinculo: vinculoLivre || osId || ''
+    };
+  }
+  function destinoFromSplitRowNF(split){
+    const destinoAtual = split.querySelector('.nf-split-finalidade')?.value || 'estoque';
+    const osSel = split.querySelector('.nf-split-os-select');
+    const osId = destinoAtual === 'os' ? (osSel?.value || '') : '';
+    const osOpt = destinoAtual === 'os' ? osSel?.selectedOptions?.[0] : null;
+    const vinculoLivre = split.querySelector('.nf-split-vinculo')?.value || '';
+    const qtd = parseNum(split.querySelector('.nf-split-qtd')?.value);
+    return {
+      qtd,
+      quantidade: qtd,
+      destino: destinoAtual,
+      finalidade: destinoAtual,
+      osId,
+      placa: destinoAtual === 'os' ? (osOpt?.dataset?.placa || '') : (destinoAtual === 'placa' ? normalizePlateNF(vinculoLivre) : ''),
+      vinculo: vinculoLivre || osId || ''
+    };
+  }
+  function collectDestinosNF(row, quantidadeOperacional){
+    const extras = Array.from(row.querySelectorAll('.nf-split-row')).map(destinoFromSplitRowNF).filter(d => d.qtd > 0);
+    const qtdExtra = extras.reduce((s, d) => s + (Number(d.qtd) || 0), 0);
+    const saldoPrincipal = Math.round((Number(quantidadeOperacional || 0) - qtdExtra) * 1000) / 1000;
+    if (saldoPrincipal < -0.0001) {
+      throw new Error('A soma dos destinos excede a quantidade operacional de uma peça. Ajuste a distribuição antes de salvar.');
+    }
+    const destinos = [];
+    if (saldoPrincipal > 0.0001 || !extras.length) destinos.push(destinoFromMainRowNF(row, Math.max(saldoPrincipal, 0)));
+    extras.forEach((d, idx) => destinos.push(Object.assign({}, d, { destinoIndice: idx + 1 })));
+    return destinos.map((d, idx) => Object.assign({}, d, { destinoIndice: idx, destinoKey: `destino_${idx}` }));
+  }
   function collectItens(){
     return Array.from(D.querySelectorAll('#containerItensNF .nf-real-row')).map(row => {
       let base = {};
       try{ base = JSON.parse(row.querySelector('.nf-json')?.value || '{}'); }catch(_){ base = {}; }
-      const osSel = row.querySelector('.nf-os-select');
-      const osId = osSel?.value || '';
-      const osOpt = osSel?.selectedOptions?.[0];
+      const qtdFiscal = parseNum(row.querySelector('.nf-qtd')?.value);
+      const fatorOperacional = parseNum(row.querySelector('.nf-fator-operacional')?.value) || fatorOperacionalSugeridoNF(base);
+      const qtdOperacional = parseNum(row.querySelector('.nf-qtd-operacional')?.value) || (qtdFiscal * fatorOperacional);
+      const destinos = collectDestinosNF(row, qtdOperacional);
+      const destinoPrincipal = destinos[0] || {};
       return Object.assign({}, base, {
         codigoFornecedor: row.querySelector('.nf-codforn')?.value || base.codigoFornecedor || base.codigo || '',
         codigoComercial: row.querySelector('.nf-codigo')?.value || base.codigoComercial || base.oem || '',
@@ -426,7 +979,14 @@
         descricaoOriginal: base.descricaoOriginal || row.querySelector('.nf-desc')?.getAttribute('title') || '',
         desc: row.querySelector('.nf-desc')?.value || base.descricao || '',
         marca: row.querySelector('.nf-marca')?.value || base.marca || '',
-        quantidade: parseNum(row.querySelector('.nf-qtd')?.value), qtd: parseNum(row.querySelector('.nf-qtd')?.value),
+        unidade: row.querySelector('.nf-unidade')?.value || base.unidade || base.und || 'UN',
+        unidadeFiscal: row.querySelector('.nf-unidade')?.value || base.unidadeFiscal || base.unidade || 'UN',
+        quantidade: qtdFiscal, qtd: qtdFiscal, quantidadeFiscal: qtdFiscal, qtdFiscal,
+        fatorOperacional,
+        quantidadeOperacional: qtdOperacional,
+        qtdOperacional,
+        destinos,
+        destinosOperacionais: destinos,
         valorUnitario: parseNum(row.querySelector('.nf-custo')?.value), custo: parseNum(row.querySelector('.nf-custo')?.value),
         desconto: parseNum(row.querySelector('.nf-descvalor')?.value),
         venda: parseNum(row.querySelector('.nf-venda')?.value),
@@ -436,24 +996,101 @@
         ncm: row.querySelector('.nf-ncm-input')?.value || base.ncm || '',
         cfop: row.querySelector('.nf-cfop-input')?.value || base.cfop || '',
         cest: row.querySelector('.nf-cest-input')?.value || base.cest || '',
-        destino: row.querySelector('.nf-finalidade')?.value || 'estoque', finalidade: row.querySelector('.nf-finalidade')?.value || 'estoque',
-        osId, placa: osOpt?.dataset?.placa || '', vinculo: row.querySelector('.nf-vinculo')?.value || osId || '',
-        valorLiquido: Math.max(parseNum(row.querySelector('.nf-qtd')?.value) * parseNum(row.querySelector('.nf-custo')?.value) - parseNum(row.querySelector('.nf-descvalor')?.value), 0)
+        destino: destinoPrincipal.destino || 'estoque',
+        finalidade: destinoPrincipal.finalidade || destinoPrincipal.destino || 'estoque',
+        osId: destinoPrincipal.osId || '',
+        placa: destinoPrincipal.placa || '',
+        vinculo: destinoPrincipal.vinculo || '',
+        valorLiquido: Math.max(qtdFiscal * parseNum(row.querySelector('.nf-custo')?.value) - parseNum(row.querySelector('.nf-descvalor')?.value), 0)
       });
     }).filter(x => x.descricao);
   }
+  W.thiaNFCollectItens = collectItens;
   function collectParcelas(){
     return Array.from(D.querySelectorAll('#nfParcelasBox .nf-parcela-row')).map(r => ({
       numero: r.querySelector('.nf-parc-num')?.value || '', vencimento: r.querySelector('.nf-parc-venc')?.value || '', valor: parseNum(r.querySelector('.nf-parc-valor')?.value)
     })).filter(p => p.valor > 0 || p.vencimento);
   }
+  W.thiaNFCollectParcelas = collectParcelas;
+  W.thiaNFRenderParcelas = function(parcelas, opts = {}){
+    const arr = Array.isArray(parcelas) ? parcelas : [];
+    ensureParcelasNFOptions(arr.length);
+    if($('nfParcelas') && arr.length) $('nfParcelas').value = String(arr.length);
+    renderParcels(arr);
+    const box = $('nfParcelasBox');
+    if(box && opts.manual) box.dataset.manualEdit = '1';
+  };
   function normalizePlateNF(v){
     return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+  function extrairPlacasTextoNF(){
+    const texto = Array.from(arguments).map(v => String(v || '').toUpperCase()).join(' ');
+    const limpo = texto.replace(/[^A-Z0-9]+/g, ' ');
+    const diretas = limpo.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/g) || [];
+    const compactado = normalizePlateNF(texto);
+    const compactas = compactado.match(/[A-Z]{3}[0-9][A-Z0-9][0-9]{2}/g) || [];
+    return Array.from(new Set(diretas.concat(compactas).map(normalizePlateNF).filter(Boolean)));
   }
   function normalizeTextNF(v){
     return String(v || '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+  function destinoVinculadoNF(item){
+    const destino = String(item?.destino || item?.finalidade || '').toLowerCase();
+    if(destino === 'os' || destino === 'placa') return true;
+    if(destino) return false;
+    if(item?.osId) return true;
+    const placa = normalizePlateNF(item?.placa || item?.vinculo || '');
+    const vinculo = String(item?.vinculo || '');
+    return !!(/\bos\b|o\.s\.|ordem/i.test(vinculo) || /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(placa));
+  }
+  function destinoEstoqueNF(item){
+    const destino = String(item?.destino || item?.finalidade || 'estoque').toLowerCase();
+    return !destino || destino === 'estoque';
+  }
+  function destinosOperacionaisItemNF(item){
+    const arr = Array.isArray(item?.destinosOperacionais) ? item.destinosOperacionais : (Array.isArray(item?.destinos) ? item.destinos : []);
+    if (arr.length) return arr.filter(d => (Number(d?.qtd || d?.quantidade || 0) || 0) > 0);
+    return [{
+      qtd: quantidadeOperacionalNF(item),
+      quantidade: quantidadeOperacionalNF(item),
+      destino: item?.destino || item?.finalidade || 'estoque',
+      finalidade: item?.finalidade || item?.destino || 'estoque',
+      osId: item?.osId || '',
+      placa: item?.placa || '',
+      vinculo: item?.vinculo || '',
+      destinoIndice: 0,
+      destinoKey: 'destino_0'
+    }];
+  }
+  function expandirItensPorDestinoNF(itens){
+    const out = [];
+    (Array.isArray(itens) ? itens : []).forEach((item, itemIndex) => {
+      const qtdOpTotal = quantidadeOperacionalNF(item);
+      const custoOp = custoOperacionalNF(item);
+      destinosOperacionaisItemNF(item).forEach((destino, destinoIndex) => {
+        const qtd = Number(destino.qtd || destino.quantidade || 0) || 0;
+        if (qtd <= 0) return;
+        out.push(Object.assign({}, item, destino, {
+          itemFiscalIndex: itemIndex,
+          destinoIndice: destino.destinoIndice ?? destinoIndex,
+          destinoKey: destino.destinoKey || `destino_${destinoIndex}`,
+          quantidadeFiscal: quantidadeFiscalNF(item),
+          qtdFiscal: quantidadeFiscalNF(item),
+          quantidadeOperacionalTotal: qtdOpTotal,
+          qtdOperacionalTotal: qtdOpTotal,
+          quantidade: qtd,
+          qtd,
+          valorUnitarioFiscal: Number(item.valorUnitario || item.custo || 0) || 0,
+          valorUnitario: custoOp,
+          custo: custoOp,
+          valorLiquido: totalOperacionalNF(item, qtd),
+          totalOperacional: totalOperacionalNF(item, qtd)
+        }));
+      });
+    });
+    return out;
   }
   function firebaseFieldValueNF(){
     try {
@@ -480,10 +1117,24 @@
     return value;
   }
   function fornecedorNomeNF(nfe, fornecedorId){
-    const local = (W.J?.fornecedores || []).find(f => f.id === fornecedorId) || null;
+    const local = (W.J?.fornecedores || []).find(f => String(f.id) === String(fornecedorId)) || null;
     const optText = $('nfFornec')?.selectedOptions?.[0]?.textContent || '';
     const optClean = optText.replace(/\s+[-—].*$/g, '').replace(/\s+\(novo\)$/i, '').trim();
-    return nfe?.fornecedor?.nome || local?.nome || local?.razao || optClean || 'Fornecedor';
+    return nfe?.fornecedor?.nome || local?.nome || local?.razao || local?.razaoSocial || local?.fantasia || local?.nomeFantasia || optClean || 'Fornecedor';
+  }
+  function fornecedorSnapshotNF(nfe, fornecedorId, nomeFallback){
+    if (nfe?.fornecedor) return nfe.fornecedor;
+    const local = (W.J?.fornecedores || []).find(f => String(f.id) === String(fornecedorId)) || {};
+    return cleanFirestoreNF({
+      id: fornecedorId || local.id || '',
+      nome: local.nome || local.razao || local.razaoSocial || nomeFallback || '',
+      razao: local.razao || local.razaoSocial || local.nome || nomeFallback || '',
+      fantasia: local.fantasia || local.nomeFantasia || '',
+      cnpj: local.cnpj || local.doc || local.documento || local.cpfCnpj || '',
+      doc: local.doc || local.documento || local.cpfCnpj || local.cnpj || local.cpf || '',
+      telefone: local.telefone || local.wpp || local.whatsapp || '',
+      email: local.email || ''
+    });
   }
   function placaDaOSNF(os){
     const v = (W.J?.veiculos || []).find(x => x.id === (os?.veiculoId || os?.veiculo)) || {};
@@ -515,16 +1166,18 @@
   }
   async function resolverOSDestinoNF(item){
     if (item.osId) return carregarOSNF(item.osId);
-    const lista = (W.J?.os || []).slice();
-    const placa = normalizePlateNF(item.placa || item.vinculo || '');
-    if (placa) {
-      const porPlaca = lista
-        .filter(o => {
-          const p = placaDaOSNF(o);
-          return p && (p === placa || p.includes(placa) || placa.includes(p));
-        })
-        .sort(ordenarOSDestinoNF);
-      if (porPlaca[0]?.id) return carregarOSNF(porPlaca[0].id);
+    const lista = (W.J?.os || []).filter(osEmAtendimentoNF);
+    const placas = extrairPlacasTextoNF(item.placa, item.vinculo);
+    for (const placa of placas) {
+      if (placa) {
+        const porPlaca = lista
+          .filter(o => {
+            const p = placaDaOSNF(o);
+            return p && (p === placa || p.includes(placa) || placa.includes(p));
+          })
+          .sort(ordenarOSDestinoNF);
+        if (porPlaca[0]?.id) return carregarOSNF(porPlaca[0].id);
+      }
     }
     const termo = normalizeTextNF(item.vinculo || item.osId || '');
     if (termo) {
@@ -540,7 +1193,7 @@
     const codigoFornecedor = item.codigoFornecedor || item.codigo || '';
     const codigoComercial = item.codigoComercial || item.oem || '';
     const desc = item.descricao || item.desc || '';
-    const key = [nfRef.id, numeroItem, codigoFornecedor, codigoComercial, desc].join('|');
+    const key = [nfRef.id, numeroItem, item.itemFiscalIndex ?? '', item.destinoIndice ?? '', item.osId || os?.id || '', item.placa || placaDaOSNF(os), codigoFornecedor, codigoComercial, desc].join('|');
     return cleanFirestoreNF({
       origem: 'nf_entrada',
       origemNFItemKey: key,
@@ -553,7 +1206,11 @@
       descricao: desc,
       marca: item.marca || '',
       qtd: Number(item.quantidade || item.qtd || 1) || 1,
+      quantidadeFiscal: Number(item.quantidadeFiscal || item.qtdFiscal || 0) || 0,
+      quantidadeOperacionalTotal: Number(item.quantidadeOperacionalTotal || item.qtdOperacionalTotal || item.quantidadeOperacional || item.qtdOperacional || 0) || 0,
+      destinoIndice: item.destinoIndice ?? 0,
       unidade: item.unidade || 'UN',
+      unidadeFiscal: item.unidadeFiscal || item.unidade || 'UN',
       fornecedor: fornecedorNome,
       fornecedorId,
       nf: nfPayload.numero || '',
@@ -564,7 +1221,8 @@
       dataCompra: nfPayload.dataNF || isoToday(),
       dataNF: nfPayload.dataNF || isoToday(),
       valorCompra: Number(item.valorUnitario || item.custo || 0) || 0,
-      totalCompra: Number(item.valorLiquido || 0) || 0,
+      valorUnitarioFiscal: Number(item.valorUnitarioFiscal || 0) || 0,
+      totalCompra: Number(item.valorLiquido || item.totalOperacional || 0) || 0,
       descontoCompra: Number(item.desconto || 0) || 0,
       ncm: item.ncm || '',
       cest: item.cest || '',
@@ -594,23 +1252,75 @@
     });
     return out;
   }
+  function osTemFluxoCiliaOuOficialNF(os){
+    const pecas = Array.isArray(os?.pecas) ? os.pecas : [];
+    const servicos = Array.isArray(os?.servicos) ? os.servicos : [];
+    const temCilia = pecas.some(p => p && (p.origem === 'cilia' || p.ciliaImportado === true || p.ciliaPieceIndex !== undefined || p.ciliaGrupo || p.ciliaAgrupador)) ||
+      servicos.some(s => s && (s.origemServico === 'cilia_tabela_tempa' || s.origemServico === 'cilia_tabela_tempa_editado' || s.ciliaPieceIndex !== undefined));
+    if (temCilia) return true;
+    const cliente = (W.J?.clientes || []).find(c => String(c.id) === String(os?.clienteId || os?.cliente || '')) || {};
+    return !!(os?.clienteOficial || os?.orgaoPublico || os?.gov || cliente.clienteOficial || cliente.orgaoPublico || cliente.publico || cliente.gov);
+  }
+  function pecaOrcamentoFromNF(pecaReal){
+    const desc = pecaReal.desc || pecaReal.descricao || '';
+    const codigo = pecaReal.codigoComercial || pecaReal.codigoFornecedor || pecaReal.codigo || '';
+    if (!desc && !codigo) return null;
+    return cleanFirestoreNF({
+      origem: 'nf_entrada_os',
+      origemNFItemKey: pecaReal.origemNFItemKey || '',
+      estoqueId: '',
+      codigo,
+      desc,
+      qtd: Number(pecaReal.qtd || 1) || 1,
+      custo: Number(pecaReal.valorCompra || 0) || 0,
+      venda: Number(pecaReal.valorVenda || pecaReal.valorCompra || 0) || 0,
+      baixarEstoqueReal: false,
+      estoqueBaixadoAutomatico: true,
+      fornecedor: pecaReal.fornecedor || '',
+      nf: pecaReal.nf || pecaReal.nfNumero || '',
+      nfId: pecaReal.nfId || '',
+      nfNumero: pecaReal.nfNumero || pecaReal.nf || '',
+      dataCompra: pecaReal.dataCompra || pecaReal.dataNF || '',
+      origemNFVinculada: true
+    });
+  }
+  function mergePecasOrcamentoNF(atuais, novas){
+    const out = Array.isArray(atuais) ? atuais.slice() : [];
+    const keyOf = p => p?.origemNFItemKey || [p?.nfId || p?.nf || '', p?.codigo || '', p?.desc || p?.descricao || '', p?.qtd || ''].join('|');
+    const pos = new Map();
+    out.forEach((p, idx) => { const k = keyOf(p); if (k) pos.set(k, idx); });
+    novas.forEach(p => {
+      const k = keyOf(p);
+      if (k && pos.has(k)) {
+        const idx = pos.get(k);
+        out[idx] = Object.assign({}, out[idx], p);
+      } else {
+        if (k) pos.set(k, out.length);
+        out.push(p);
+      }
+    });
+    return out;
+  }
   async function registrarPecasReaisOSNF(batch, itens, nfRef, nfPayload, fornecedorId, fornecedorNome){
     const porOS = new Map();
+    const semDestino = [];
     for (const item of itens) {
-      const destino = String(item.destino || item.finalidade || '').toLowerCase();
-      const placaVinculo = normalizePlateNF(item.placa || item.vinculo || '');
-      const vinculoPareceOS = /\bos\b|o\.s\.|ordem/i.test(String(item.vinculo || ''));
-      const vinculoParecePlaca = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(placaVinculo);
-      if (!item.osId && destino !== 'os' && destino !== 'placa' && !vinculoPareceOS && !vinculoParecePlaca) continue;
+      if (!destinoVinculadoNF(item)) continue;
       const os = await resolverOSDestinoNF(item);
-      if (!os?.id) continue;
+      if (!os?.id) {
+        semDestino.push(item);
+        continue;
+      }
       item.osId = os.id;
       item.placa = item.placa || placaDaOSNF(os);
       const entry = porOS.get(os.id) || { os, pecas: [] };
       entry.pecas.push(pecaRealFromNF(item, os, nfRef, nfPayload, fornecedorId, fornecedorNome));
       porOS.set(os.id, entry);
     }
-    const fv = firebaseFieldValueNF();
+    if (semDestino.length) {
+      const resumo = semDestino.slice(0, 5).map(i => `${i.codigo || i.codigoFornecedor || 'sem codigo'} - ${i.descricao || i.desc || 'peca sem descricao'} (${i.vinculo || i.placa || 'sem placa/O.S.'})`).join(' | ');
+      throw new Error(`Existem ${semDestino.length} item(ns) marcados para O.S./placa sem O.S. em atendimento resolvida. Selecione a O.S. no campo da peça antes de finalizar. ${resumo}`);
+    }
     let totalPecas = 0;
     const registrosAuxiliares = [];
     for (const [osId, entry] of porOS.entries()) {
@@ -631,18 +1341,18 @@
         updatedAt: new Date().toISOString(),
         ultimaEntradaNFVinculada: nfPayload.numero || nfRef.id
       };
-      if (fv?.arrayUnion) {
-        osUpdate.pecasReais = fv.arrayUnion(...pecas);
-        osUpdate.timeline = fv.arrayUnion(evento);
-      } else {
-        osUpdate.pecasReais = mergePecasReaisNF(entry.os.pecasReais, pecas);
-        osUpdate.timeline = (Array.isArray(entry.os.timeline) ? entry.os.timeline.slice() : []).concat(evento);
+      osUpdate.pecasReais = mergePecasReaisNF(entry.os.pecasReais, pecas);
+      if (!osTemFluxoCiliaOuOficialNF(entry.os)) {
+        const pecasOrcamento = pecas.map(pecaOrcamentoFromNF).filter(Boolean);
+        if (pecasOrcamento.length) osUpdate.pecas = mergePecasOrcamentoNF(entry.os.pecas, pecasOrcamento);
       }
+      osUpdate.timeline = (Array.isArray(entry.os.timeline) ? entry.os.timeline.slice() : []).concat(evento);
       batch.set(W.db.collection('ordens_servico').doc(osId), cleanFirestoreNF(osUpdate), { merge: true });
       registrosAuxiliares.push({ osId, acao, nfId: nfRef.id, nfNumero: nfPayload.numero || '', pecas });
       const localOS = (W.J?.os || []).find(o => String(o.id) === String(osId));
       if (localOS) {
         localOS.pecasReais = mergePecasReaisNF(localOS.pecasReais, pecas);
+        if (osUpdate.pecas) localOS.pecas = osUpdate.pecas;
         localOS.timeline = (Array.isArray(localOS.timeline) ? localOS.timeline.slice() : []).concat(evento);
         localOS.ultimaEntradaNFVinculada = nfPayload.numero || nfRef.id;
         localOS.updatedAt = osUpdate.updatedAt;
@@ -654,6 +1364,7 @@
         pecas.forEach(p => {
           if (!p.origemNFItemKey || !chavesAtuais.has(p.origemNFItemKey)) W.adicionarPecaRealRow(p);
         });
+        W.atualizarResumoPecasReais177?.();
       }
     }
     return { os: porOS.size, pecas: totalPecas, registrosAuxiliares };
@@ -708,53 +1419,251 @@
     batch.set(ref, { tenantId:W.J?.tid, nome:fornec.nome || 'Fornecedor XML', fantasia:fornec.fantasia || '', cnpj:fornec.cnpj || '', ie:fornec.ie || '', telefone:fornec.endereco?.telefone || '', cep:fornec.endereco?.cep || '', endereco:fornec.endereco || {}, origem:'xml_nfe', createdAt:new Date().toISOString() });
     return ref.id;
   }
+  function isNFDevolucao(nfe, itens){
+    const tipo = tipoOperacaoNF();
+    if (tipo) return tipo === 'devolucao';
+    const txt = normalizeTextNF([nfe?.natureza, nfe?.finalidade, nfe?.infCpl, nfe?.infAdFisco].join(' '));
+    if (txt.includes('devolucao') || String(nfe?.finalidade || '') === '4') return true;
+    const arr = Array.isArray(itens) ? itens : [];
+    return arr.length > 0 && arr.every(i => normalizeTextNF(i.destino || i.finalidade || '').includes('devolucao'));
+  }
+  function itemNFMatch(a, b){
+    const ca = normalizeTextNF(a?.codigoFornecedor || a?.codigo || a?.codigoComercial || a?.oem || a?.ean || '');
+    const cb = normalizeTextNF(b?.codigoFornecedor || b?.codigo || b?.codigoComercial || b?.oem || b?.ean || '');
+    const da = normalizeTextNF(a?.descricao || a?.desc || '');
+    const db = normalizeTextNF(b?.descricao || b?.desc || '');
+    return (ca && cb && ca === cb) || (da && db && da === db);
+  }
+  async function localizarNFOriginalDevolucao(nfe){
+    const refs = Array.isArray(nfe?.referencias) ? nfe.referencias : [];
+    const selecionada = D.getElementById('nfDevolucaoOriginalId')?.value || '';
+    if (selecionada) {
+      let n = (W.J?.notasFiscaisEntrada || []).find(x => String(x.id) === String(selecionada));
+      if (!n && W.db) {
+        try {
+          const snap = await W.db.collection('notas_fiscais_entrada').doc(selecionada).get();
+          if (snap.exists) n = { id:snap.id, ...snap.data() };
+        } catch (_) {}
+      }
+      if (n) return n;
+    }
+    let original = null;
+    if (refs.length) original = (W.J?.notasFiscaisEntrada || []).find(n => refs.includes(n.chave));
+    if (!original && refs.length && W.db && W.J?.tid) {
+      try {
+        const snap = await W.db.collection('notas_fiscais_entrada').where('tenantId','==',W.J.tid).where('chave','==',refs[0]).limit(1).get();
+        snap.forEach(doc => { original = { id:doc.id, ...doc.data() }; });
+      } catch (_) {}
+    }
+    if (!original) {
+      const termo = prompt('Informe o numero ou ID da NF original que esta sendo devolvida:', '') || '';
+      if (!termo.trim()) return null;
+      original = (W.J?.notasFiscaisEntrada || []).find(n => String(n.id) === termo.trim() || String(n.numero || '') === termo.trim() || String(n.chave || '') === termo.trim());
+      if (!original && W.db && W.J?.tid) {
+        try {
+          const snap = await W.db.collection('notas_fiscais_entrada').where('tenantId','==',W.J.tid).where('numero','==',termo.trim()).limit(1).get();
+          snap.forEach(doc => { original = { id:doc.id, ...doc.data() }; });
+        } catch (_) {}
+      }
+    }
+    return original || null;
+  }
+  function removerPecasReaisDevolucaoBatch(batch, nfOriginal, itens, nfPayload, motivo){
+    let removidas = 0;
+    (W.J?.os || []).forEach(os => {
+      const pecas = Array.isArray(os.pecasReais) ? os.pecasReais.slice() : [];
+      if (!pecas.length) return;
+      const novas = pecas.filter(p => {
+        const daNF = String(p.nfId || '') === String(nfOriginal?.id || '') || String(p.nfNumero || p.nf || '') === String(nfOriginal?.numero || '');
+        const bate = daNF && itens.some(i => itemNFMatch(p, i));
+        if (bate) removidas += 1;
+        return !bate;
+      });
+      if (novas.length === pecas.length) return;
+      const timeline = Array.isArray(os.timeline) ? os.timeline.slice() : [];
+      timeline.push({ ts:Date.now(), por:W.J?.nome || 'Sistema', tipo:'devolucao_nf', nfId:nfPayload.id || '', msg:`Peca removida por NF de devolucao ${nfPayload.numero || ''}. ${motivo || ''}` });
+      batch.update(W.db.collection('ordens_servico').doc(os.id), { pecasReais:novas, timeline, updatedAt:new Date().toISOString() });
+      os.pecasReais = novas;
+      os.timeline = timeline;
+    });
+    return removidas;
+  }
+  async function salvarNFDevolucao(itens, nfe, fornecedorId, nfPayload){
+    const original = await localizarNFOriginalDevolucao(nfe);
+    if (!original) {
+      if(W.toast) W.toast('NF de devolucao exige vinculo com a NF original. Operacao bloqueada ate selecionar a original.', 'warn');
+      return;
+    }
+    const motivo = D.getElementById('nfDevolucaoMotivo')?.value || prompt('Justificativa/observacao da devolucao:', 'Devolucao de mercadoria ao fornecedor') || 'Devolucao de mercadoria ao fornecedor';
+    const batch = W.db.batch();
+    const nfRef = W.db.collection('notas_fiscais_entrada').doc();
+    const agora = new Date().toISOString();
+    if (fornecedorId && nfe?.fornecedor && !(W.J?.fornecedores || []).some(f => String(f.id) === String(fornecedorId))) {
+      const fornec = nfe.fornecedor || {};
+      batch.set(W.db.collection('fornecedores').doc(fornecedorId), { tenantId:W.J?.tid, nome:fornec.nome || 'Fornecedor XML', fantasia:fornec.fantasia || '', cnpj:fornec.cnpj || '', ie:fornec.ie || '', telefone:fornec.endereco?.telefone || '', cep:fornec.endereco?.cep || '', endereco:fornec.endereco || {}, origem:'xml_nfe', createdAt:agora }, { merge:true });
+    }
+    nfPayload.id = nfRef.id;
+    nfPayload.tipo = 'devolucao';
+    nfPayload.nfOriginalId = original.id || '';
+    nfPayload.chaveOriginal = original.chave || (nfe?.referencias || [])[0] || '';
+    nfPayload.statusConferencia = 'Devolucao vinculada';
+    nfPayload.motivoDevolucao = motivo;
+    nfPayload.createdAt = agora;
+    nfPayload.updatedAt = agora;
+    batch.set(nfRef, nfPayload);
+    const vinculosOrig = (W.J?.nfItensVinculos || []).filter(v => String(v.nfId || '') === String(original.id || '') || (original.chave && v.chave === original.chave));
+    const devolvidosResumo = [];
+    const itensOriginalAtualizados = (Array.isArray(original.itens) ? original.itens : []).map(oi => {
+      const dev = itens.find(i => itemNFMatch(oi, i));
+      if (!dev) return oi;
+      const qtdDev = Number(dev.quantidade || dev.qtd || 0) || 0;
+      const qtdAnt = Number(oi.quantidadeDevolvida || oi.qtdDevolvida || 0) || 0;
+      const qtdOrig = Number(oi.quantidade || oi.qtd || 0) || 0;
+      const totalDev = qtdAnt + qtdDev;
+      devolvidosResumo.push({ codigo:dev.codigo || dev.codigoFornecedor || oi.codigo || oi.codigoFornecedor || '', desc:dev.descricao || dev.desc || oi.descricao || oi.desc || '', qtd:qtdDev });
+      return Object.assign({}, oi, {
+        quantidadeDevolvida: totalDev,
+        qtdDevolvida: totalDev,
+        saldoAposDevolucao: Math.max(0, qtdOrig - totalDev),
+        statusDevolucao: qtdOrig && totalDev >= qtdOrig ? 'Devolvido total' : 'Devolvido parcial',
+        ultimaNfDevolucaoId: nfRef.id,
+        ultimaNfDevolucaoNumero: nfPayload.numero || ''
+      });
+    });
+    if (original.id) {
+      batch.update(W.db.collection('notas_fiscais_entrada').doc(original.id), {
+        itens: itensOriginalAtualizados,
+        possuiDevolucao: true,
+        statusDevolucao: devolvidosResumo.length >= (original.itens || []).length ? 'Devolvido total/parcial' : 'Devolvido parcial',
+        ultimaNfDevolucaoId: nfRef.id,
+        ultimaNfDevolucaoNumero: nfPayload.numero || '',
+        ultimaDevolucaoEm: agora,
+        updatedAt: agora
+      });
+    }
+    itens.forEach(item => {
+      const v = vinculosOrig.find(x => itemNFMatch(x, item));
+      const estFallback = !v ? (W.J?.estoque || []).find(p => itemNFMatch(p, item)) : null;
+      const estoqueIdDev = v?.estoqueId || estFallback?.id || '';
+      const est = estoqueIdDev ? (W.J?.estoque || []).find(p => String(p.id) === String(estoqueIdDev)) : null;
+      const qtd = Number(item.quantidade || item.qtd || v?.qtd || 0) || 0;
+      if (v?.id) batch.update(W.db.collection('nf_itens_vinculos').doc(v.id), { devolvido:true, devolvidoEm:agora, nfDevolucaoId:nfRef.id, motivoDevolucao:motivo, updatedAt:agora });
+      if (estoqueIdDev && est && !v?.estoqueBaixadoAutomatico) batch.update(W.db.collection('estoqueItems').doc(estoqueIdDev), { qtd:Math.max(0, (Number(est.qtd)||0) - qtd), updatedAt:agora });
+      batch.set(W.db.collection('estoque_movimentos').doc(), cleanFirestoreNF({ tenantId:W.J.tid, estoqueId:estoqueIdDev, tipo:'devolucao_nf_fornecedor', nfId:nfRef.id, nfNumero:nfPayload.numero, nfOriginalId:original.id || '', nfOriginalNumero:original.numero || '', codigo:item.codigo || item.codigoFornecedor || v?.codigo || '', desc:item.descricao || item.desc || v?.desc || '', qtd:-Math.abs(qtd), custo:item.valorUnitario || item.custo || v?.custo || 0, total:item.valorLiquido || item.total || v?.total || 0, osId:v?.osId || item.osId || '', placa:v?.placa || item.placa || '', motivo, createdAt:agora, usuario:W.J?.nome || 'Sistema' }));
+    });
+    const removidasOS = removerPecasReaisDevolucaoBatch(batch, original, itens, nfPayload, motivo);
+    const totalNF = Number(nfPayload.totalNF || nfPayload.totalItens || 0) || 0;
+    batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Entrada', status:'Pendente', desc:`Credito/abatimento devolucao NF ${nfPayload.numero || 's/n'} da NF ${original.numero || original.id || ''}`, valor:totalNF, pgto:'Abatimento devolucao', venc:isoToday(), notaFiscalId:nfRef.id, nfOriginalId:original.id || '', fornecedorId, createdAt:agora });
+    batch.set(W.db.collection('lixeira_auditoria').doc(), { tenantId:W.J.tid, modulo:'ESTOQUE/NF', acao:`NF de devolucao ${nfPayload.numero || nfRef.id} vinculada a NF ${original.numero || original.id}`, usuario:W.J?.nome || 'Sistema', entidade:'notas_fiscais_entrada', entidadeId:nfRef.id, motivo, itens, devolvidosResumo, removidasOS, ts:agora });
+    await batch.commit();
+    if(W.toast) W.toast(`NF de devolucao registrada. ${removidasOS} peca(s) removida(s) de O.S. quando aplicavel.`, 'ok');
+    if(typeof W.fecharModal === 'function') W.fecharModal('modalNF');
+  }
   W.salvarNF = async function(){
-    const itens = collectItens();
+    const nfEditId = D.getElementById('nfEditId')?.value || '';
+    if ((nfEditId || W._thiaModoNF === 'edicao_nf') && typeof W.salvarEdicaoNF === 'function') {
+      return W.salvarEdicaoNF();
+    }
+    if (nfEditId || W._thiaModoNF === 'edicao_nf') {
+      if (W.toast) W.toast('Modo edicao de NF ativo. Nova entrada bloqueada para evitar duplicidade de estoque, O.S. e financeiro.', 'warn');
+      return;
+    }
+    let itens = [];
+    try { itens = collectItens(); }
+    catch(e) { if(W.toast) W.toast(e.message || String(e), 'warn'); else alert(e.message || e); return; }
     if(!itens.length){ if(W.toast) W.toast('⚠ Adicione ao menos um item','warn'); return; }
     if(!W.db || !W.J?.tid){ alert('Banco de dados ainda não carregado.'); return; }
     const nfe = W._nfeProData || null;
     const batch = W.db.batch();
     const fornecedorId = await ensureFornecedor(batch, nfe);
-    if(nfe?.chave){
-      const dupSnap = await W.db.collection('notas_fiscais_entrada')
-        .where('tenantId','==',W.J.tid)
-        .where('chave','==',nfe.chave)
-        .limit(1)
-        .get();
-      if(!dupSnap.empty){
-        const msg = `NF-e ${nfe.numero || ''} ja importada pela chave ${nfe.chave}. Operacao bloqueada para evitar duplicidade fiscal/financeira.`;
-        if(W.toast) W.toast(msg,'warn'); else alert(msg);
-        return;
-      }
+    const fornecedorNome = fornecedorNomeNF(nfe, fornecedorId);
+    const fornecedorSnapshot = fornecedorSnapshotNF(nfe, fornecedorId, fornecedorNome);
+    const duplicada = await buscarNFeDuplicada(nfe || { numero:getVal('nfNumero'), serie:'', chave:'', fornecedor:{ cnpj:'' } });
+    if(duplicada){
+      const msg = `NF ${getVal('nfNumero') || nfe?.numero || ''} ja importada. Operacao bloqueada para evitar duplicidade fiscal, estoque e financeiro.`;
+      if(W.toast) W.toast(msg,'warn'); else alert(msg);
+      mostrarNFeDuplicada(nfe || { numero:getVal('nfNumero'), serie:'', chave:'' }, duplicada);
+      return;
     }
-    const totalItens = Math.round(itens.reduce((s,i)=>s+(Number(i.valorLiquido)||0),0)*100)/100;
-    const totalNF = nfe?.totais?.vNF || totalItens;
+    const totaisTela = calcTotaisNF();
+    const totalItens = totaisTela.totalItens;
+    const totalNF = totaisTela.totalFiscal || nfe?.totais?.vNF || totalItens;
     const nfRef = W.db.collection('notas_fiscais_entrada').doc();
+    const tipoOperacao = tipoOperacaoNF();
     const nfPayload = {
-      tenantId: W.J.tid, tipo:'entrada', origem:nfe?'xml_nfe':'manual', fornecedorId,
+      tenantId: W.J.tid, tipo:'entrada', tipoOperacao, tipoNF:tipoOperacao, origem:nfe?'xml_nfe':'manual', fornecedorId,
       numero: getVal('nfNumero') || nfe?.numero || '', serie:nfe?.serie || '', chave:nfe?.chave || '', natureza:nfe?.natureza || '',
       dataNF: getVal('nfData') || nfe?.dataEmissao || isoToday(), totalNF, totalItens,
-      totaisFiscais: nfe?.totais || { vNF:totalNF }, cobranca: nfe?.cobranca || {}, pagamentos:nfe?.pagamentos || [], fornecedorSnapshot:nfe?.fornecedor || null,
+      despesasAcessorias: {
+        frete: totaisTela.frete,
+        seguro: totaisTela.seguro,
+        outrasDespesas: totaisTela.outrasDespesas,
+        descontoFiscalExtra: totaisTela.descontoFiscalExtra
+      },
+      totaisFiscais: Object.assign({}, nfe?.totais || {}, {
+        totalItens,
+        vFrete: totaisTela.frete,
+        vSeg: totaisTela.seguro,
+        vOutro: totaisTela.outrasDespesas,
+        descontoFiscalExtra: totaisTela.descontoFiscalExtra,
+        vNF: totalNF,
+        totalCalculado: totaisTela.totalCalculado
+      }), cobranca: nfe?.cobranca || {}, pagamentos:nfe?.pagamentos || [], fornecedorSnapshot, fornecedorNome,
       itens, rawXml:nfe?.rawXml || '', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
     };
-    const fornecedorNome = fornecedorNomeNF(nfe, fornecedorId);
-    const vinculosOS = await registrarPecasReaisOSNF(batch, itens, nfRef, nfPayload, fornecedorId, fornecedorNome);
+    if (isNFDevolucao(nfe, itens)) {
+      await salvarNFDevolucao(itens, nfe, fornecedorId, nfPayload);
+      return;
+    }
+    const itensOperacionais = expandirItensPorDestinoNF(itens);
+    let vinculosOS;
+    try {
+      vinculosOS = await registrarPecasReaisOSNF(batch, itensOperacionais, nfRef, nfPayload, fornecedorId, fornecedorNome);
+    } catch(e) {
+      if(W.toast) W.toast(e.message || String(e), 'warn'); else alert(e.message || e);
+      return;
+    }
     batch.set(nfRef, nfPayload);
     for(const item of itens){
       const existente = (W.J?.estoque || []).find(p => String(p.codigo||p.oem||'').toLowerCase() === String(item.codigo||'').toLowerCase() && item.codigo) || (W.J?.estoque || []).find(p => String(p.desc||'').toLowerCase() === String(item.descricao||'').toLowerCase());
-      const estoquePayload = { tenantId:W.J.tid, desc:item.descricao, codigo:item.codigoFornecedor||item.codigo||'', codigoFornecedor:item.codigoFornecedor||item.codigo||'', codigoComercial:item.codigoComercial||item.oem||'', oem:item.oem||item.codigoComercial||item.codigo||'', marca:item.marca||'', ean:item.ean||'', ncm:item.ncm||'', cest:item.cest||'', cfop:item.cfop||'', und:item.unidade||'UN', custo:item.valorUnitario, venda:item.venda || item.valorUnitario, fornecedorId, ultimaNF:nfPayload.numero, updatedAt:new Date().toISOString() };
-      if(existente) batch.update(W.db.collection('estoqueItems').doc(existente.id), Object.assign({}, estoquePayload, { qtd:(Number(existente.qtd)||0)+(Number(item.quantidade)||0) }));
-      else batch.set(W.db.collection('estoqueItems').doc(), Object.assign({}, estoquePayload, { qtd:Number(item.quantidade)||0, min:1, createdAt:new Date().toISOString() }));
-      batch.set(W.db.collection('nf_itens_vinculos').doc(), { tenantId:W.J.tid, nfId:nfRef.id, nfNumero:nfPayload.numero, chave:nfPayload.chave, fornecedorId, codigo:item.codigo||'', ean:item.ean||'', desc:item.descricao, qtd:item.quantidade, custo:item.valorUnitario, desconto:item.desconto, total:item.valorLiquido, ncm:item.ncm||'', cest:item.cest||'', cfop:item.cfop||'', finalidade:item.destino||item.finalidade||'estoque', vinculo:item.vinculo||'', osId:item.osId||'', placa:item.placa||'', createdAt:new Date().toISOString() });
+      const destinosItem = expandirItensPorDestinoNF([item]);
+      const entradaQtd = destinosItem.reduce((s, d) => s + (Number(d.quantidade || d.qtd || 0) || 0), 0);
+      const qtdDisponivel = destinosItem.filter(destinoEstoqueNF).reduce((s, d) => s + (Number(d.quantidade || d.qtd || 0) || 0), 0);
+      const custoOp = custoOperacionalNF(item);
+      const estoqueRef = existente ? W.db.collection('estoqueItems').doc(existente.id) : W.db.collection('estoqueItems').doc();
+      const estoqueId = estoqueRef.id;
+      const estoquePayload = { tenantId:W.J.tid, desc:item.descricao, descricao:item.descricao, codigo:item.codigoFornecedor||item.codigo||'', codigoFornecedor:item.codigoFornecedor||item.codigo||'', codigoComercial:item.codigoComercial||item.oem||'', oem:item.oem||item.codigoComercial||item.codigo||'', marca:item.marca||'', ean:item.ean||'', ncm:item.ncm||'', cest:item.cest||'', cfop:item.cfop||'', und:item.unidadeFiscal||item.unidade||'UN', unidadeFiscal:item.unidadeFiscal||item.unidade||'UN', quantidadeFiscal:item.quantidadeFiscal||item.quantidade||0, quantidadeOperacional:entradaQtd, fatorOperacional:item.fatorOperacional||1, custo:custoOp, valorUnitarioFiscal:item.valorUnitarioFiscal||item.valorUnitario||0, venda:item.venda || custoOp, fornecedorId, fornecedorNome, ultimaFornecedor:fornecedorNome, ultimaNF:nfPayload.numero, ultimaNFId:nfRef.id, updatedAt:new Date().toISOString() };
+      if(existente) batch.update(estoqueRef, Object.assign({}, estoquePayload, { qtd:(Number(existente.qtd)||0)+qtdDisponivel }));
+      else batch.set(estoqueRef, Object.assign({}, estoquePayload, { qtd:qtdDisponivel, min:1, createdAt:new Date().toISOString() }));
+      batch.set(W.db.collection('estoque_movimentos').doc(), cleanFirestoreNF({ tenantId:W.J.tid, estoqueId, tipo:'entrada_nf', nfId:nfRef.id, nfNumero:nfPayload.numero, chave:nfPayload.chave, fornecedorId, fornecedorNome, codigo:item.codigo||item.codigoFornecedor||'', desc:item.descricao, qtd:entradaQtd, quantidadeFiscal:item.quantidadeFiscal||item.quantidade||0, fatorOperacional:item.fatorOperacional||1, custo:custoOp, valorUnitarioFiscal:item.valorUnitario||0, total:item.valorLiquido, osId:'', placa:'', destino:'entrada_operacional', createdAt:new Date().toISOString(), usuario:W.J?.nome||'Sistema' }));
+      for (const destItem of destinosItem) {
+        const vinculadoNaEntrada = destinoVinculadoNF(destItem);
+        if(vinculadoNaEntrada && Number(destItem.quantidade || destItem.qtd || 0)){
+          batch.set(W.db.collection('estoque_movimentos').doc(), cleanFirestoreNF({ tenantId:W.J.tid, estoqueId, tipo:'baixa_automatica_vinculo_nf_os', nfId:nfRef.id, nfNumero:nfPayload.numero, chave:nfPayload.chave, fornecedorId, fornecedorNome, codigo:destItem.codigo||destItem.codigoFornecedor||'', desc:destItem.descricao, qtd:-Math.abs(Number(destItem.quantidade || destItem.qtd || 0) || 0), quantidadeFiscal:item.quantidadeFiscal||item.quantidade||0, custo:destItem.valorUnitario, valorUnitarioFiscal:item.valorUnitario||0, total:destItem.valorLiquido, osId:destItem.osId||'', placa:destItem.placa||'', destino:destItem.destino||destItem.finalidade||'os', destinoIndice:destItem.destinoIndice ?? 0, motivo:'Peca vinculada a veiculo/O.S. na entrada da NF; saldo de estoque fica baixado automaticamente.', createdAt:new Date().toISOString(), usuario:W.J?.nome||'Sistema' }));
+        }
+        batch.set(W.db.collection('nf_itens_vinculos').doc(), cleanFirestoreNF({ tenantId:W.J.tid, nfId:nfRef.id, nfNumero:nfPayload.numero, chave:nfPayload.chave, fornecedorId, fornecedorNome, estoqueId, codigo:destItem.codigo||'', codigoFornecedor:destItem.codigoFornecedor||destItem.codigo||'', codigoComercial:destItem.codigoComercial||destItem.oem||'', ean:destItem.ean||'', desc:destItem.descricao, marca:destItem.marca||'', qtd:destItem.quantidade, quantidadeFiscal:item.quantidadeFiscal||item.quantidade||0, quantidadeOperacionalTotal:entradaQtd, fatorOperacional:item.fatorOperacional||1, destinoIndice:destItem.destinoIndice ?? 0, custo:destItem.valorUnitario, valorUnitarioFiscal:item.valorUnitario||0, desconto:item.desconto, total:destItem.valorLiquido, ncm:destItem.ncm||'', cest:destItem.cest||'', cfop:destItem.cfop||'', finalidade:destItem.destino||destItem.finalidade||'estoque', vinculo:destItem.vinculo||'', osId:destItem.osId||'', placa:destItem.placa||'', estoqueBaixadoAutomatico:vinculadoNaEntrada, createdAt:new Date().toISOString() }));
+      }
     }
     const parcelas = collectParcelas();
     const forma = getVal('nfPgtoForma') || 'Dinheiro';
-    if(parcelas.length){
-      for(const [idx,p] of parcelas.entries()){
-        batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Saída', status:['Dinheiro','PIX'].includes(forma)?'Pago':'Pendente', desc:`NF ${nfPayload.numero || 's/n'} — ${nfe?.fornecedor?.nome || 'Fornecedor'} (${idx+1}/${parcelas.length})`, valor:p.valor, pgto:forma, venc:p.vencimento || isoToday(), notaFiscalId:nfRef.id, chaveNFe:nfPayload.chave, fornecedorId, createdAt:new Date().toISOString() });
+    const formaNorm = formaPagamentoNFNorm(forma);
+    const formaAVista = formaPagamentoNFAVista(forma);
+    const formaAgrupamentoPeriodo = forma === 'AgrupamentoPeriodo' || formaNorm.includes('agrupamento');
+    const formaPermiteParcelas = !formaAgrupamentoPeriodo && formaPagamentoNFParcelavel(forma);
+    const parcelasFinanceiras = formaPermiteParcelas && !formaAVista ? parcelas : [];
+    const statusFinanceiro = formaAVista ? 'Pago' : 'Pendente';
+    if(formaAgrupamentoPeriodo){
+      const diasAgr = Math.max(1, parseInt(getVal('nfAgrPeriodoDias') || '7', 10) || 7);
+      const vencAgr = getVal('nfAgrVenc') || getVal('nfVenc') || isoToday();
+      const statusAgr = 'Aguardando boleto agrupado';
+      const grupoKey = ['fornecedor', fornecedorId || onlyDigits(nfe?.fornecedor?.cnpj || ''), 'periodo', diasAgr, vencAgr].join('_').replace(/[.#$\[\]\/]/g, '_');
+      batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Saida', status:statusAgr, desc:`NF ${nfPayload.numero || 's/n'} aguardando boleto agrupado - ${fornecedorNome || 'Fornecedor'}`, valor:totalNF, pgto:'Agrupamento por periodo', venc:vencAgr, notaFiscalId:nfRef.id, chaveNFe:nfPayload.chave, fornecedorId, fornecedorNome:fornecedorNome || '', agrupamentoPeriodo:true, aguardaBoletoAgrupado:true, agrupamentoDias:diasAgr, agrupamentoVencimentoPrevisto:vencAgr, agrupamentoFornecedorKey:grupoKey, bloqueadoPagamentoIndividual:true, createdAt:new Date().toISOString() });
+    } else if(parcelasFinanceiras.length){
+      for(const [idx,p] of parcelasFinanceiras.entries()){
+        batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Saída', status:statusFinanceiro, desc:`NF ${nfPayload.numero || 's/n'} — ${fornecedorNome || 'Fornecedor'} (${idx+1}/${parcelasFinanceiras.length})`, valor:p.valor, pgto:forma, venc:p.vencimento || isoToday(), notaFiscalId:nfRef.id, chaveNFe:nfPayload.chave, fornecedorId, fornecedorNome:fornecedorNome || '', createdAt:new Date().toISOString() });
       }
     } else {
-      batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Saída', status:['Dinheiro','PIX'].includes(forma)?'Pago':'Pendente', desc:`NF ${nfPayload.numero || 's/n'} — ${nfe?.fornecedor?.nome || 'Fornecedor'}`, valor:totalNF, pgto:forma, venc:getVal('nfVenc') || isoToday(), notaFiscalId:nfRef.id, chaveNFe:nfPayload.chave, fornecedorId, createdAt:new Date().toISOString() });
+      batch.set(W.db.collection('financeiro').doc(), { tenantId:W.J.tid, tipo:'Saída', status:statusFinanceiro, desc:`NF ${nfPayload.numero || 's/n'} — ${fornecedorNome || 'Fornecedor'}`, valor:totalNF, pgto:forma, venc:getVal('nfVenc') || isoToday(), notaFiscalId:nfRef.id, chaveNFe:nfPayload.chave, fornecedorId, fornecedorNome:fornecedorNome || '', createdAt:new Date().toISOString() });
     }
     await batch.commit();
     await salvarRegistrosAuxiliaresNF(vinculosOS);
@@ -772,7 +1681,7 @@
   D.addEventListener('change', function(e){ if(e.target && e.target.id === 'nfParcelas') gerarParcelasManuais(); });
   D.addEventListener('DOMContentLoaded', function(){
     const st = D.createElement('style');
-    st.textContent = `@media(max-width:900px){.nf-real-grid-main,.nf-real-grid-fiscal,.nf-real-grid-destino,.nf-real-tributos{grid-template-columns:1fr!important}.nf-real-row input,.nf-real-row select{min-width:0!important}}`;
+    st.textContent = `@media(max-width:900px){.nf-real-grid-main,.nf-real-grid-fiscal,.nf-real-grid-destino,.nf-real-grid-operacional,.nf-real-tributos,.nf-split-row{grid-template-columns:1fr!important}.nf-real-row input,.nf-real-row select{min-width:0!important}}`;
     D.head.appendChild(st);
   });
 })();

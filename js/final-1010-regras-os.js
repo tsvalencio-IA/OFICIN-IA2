@@ -43,16 +43,14 @@
     window.iaEnviar = async function(){
       const inp=$('iaInput'); const msg=inp?.value?.trim(); if(!msg) return; inp.value='';
       if (typeof window._iaMsgUser === 'function') window._iaMsgUser(msg);
-      const lid = typeof window._iaMsgBot === 'function' ? window._iaMsgBot('<span class="j-spinner"></span> Analisando histórico real da O.S...') : null;
-      const key = window.J?.gemini || null;
-      if(!key){ if(window._iaReplace) window._iaReplace(lid,'⚠ Chave da IA não configurada.'); return; }
-      const sys = `Você é o thIAguinho técnico da equipe. Responda SOMENTE com base no contexto real. Regra absoluta: peça/serviço no orçamento não é peça trocada. Item NÃO APROVADO jamais pode ser tratado como executado. Só diga executado/trocado se execucaoItens.status = executado ou executado_obs.\n\n${window.thIAContextoOSVerdadeiro(window.dbOS||[])}`;
+      const lid = typeof window._iaMsgBot === 'function' ? window._iaMsgBot('<span class="j-spinner"></span> Analisando historico real da O.S...') : null;
       try{
-        const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:msg}]}],systemInstruction:{parts:[{text:sys}]},generationConfig:{temperature:0.25,maxOutputTokens:2048},safetySettings:[{category:'HARM_CATEGORY_HARASSMENT',threshold:'BLOCK_ONLY_HIGH'},{category:'HARM_CATEGORY_HATE_SPEECH',threshold:'BLOCK_ONLY_HIGH'},{category:'HARM_CATEGORY_SEXUALLY_EXPLICIT',threshold:'BLOCK_ONLY_HIGH'},{category:'HARM_CATEGORY_DANGEROUS_CONTENT',threshold:'BLOCK_ONLY_HIGH'}]})});
-        const data=await res.json(); if(!res.ok) throw new Error(data?.error?.message||`HTTP ${res.status}`);
-        const resp=data.candidates?.[0]?.content?.parts?.map(p=>p.text).join('\n')||''; if(!resp) throw new Error('Resposta vazia da IA.');
-        if(window._iaReplace) window._iaReplace(lid, resp.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>'));
-      }catch(e){ if(window._iaReplace) window._iaReplace(lid,'⚠ Erro técnico na IA: '+(e.message||e)); }
+        if (typeof window.thiaCarregarCerebroGlobal === 'function') await window.thiaCarregarCerebroGlobal();
+        const resp = typeof window.thiaResponderLocal === 'function'
+          ? window.thiaResponderLocal(msg, { perfil:'equipe' })
+          : 'Motor interno indisponivel nesta tela.';
+        if(window._iaReplace) window._iaReplace(lid, resp);
+      }catch(e){ if(window._iaReplace) window._iaReplace(lid,'Nao consegui cruzar os dados internos: '+(e.message||e)); }
     };
   }
 
@@ -148,17 +146,17 @@
     }
   }
 
-  // Superadmin: teste da IA também recebe regra anti-alucinação e alerta que não tem contexto operacional completo.
-  if (typeof window.testarGemini === 'function' && !window.testarGemini.__blindado1010) {
-    const old = window.testarGemini;
-    window.testarGemini = async function(){
+  // Superadmin: teste do cerebro local tambem recebe regra anti-alucinacao.
+  if (typeof window.testarCerebroLocal === 'function' && !window.testarCerebroLocal.__blindado1010) {
+    const old = window.testarCerebroLocal;
+    window.testarCerebroLocal = async function(){
       const inp = $('iaTestInput');
       if (inp && !/item no orçamento/i.test(inp.value || '')) {
         inp.value = String(inp.value || '') + '\n\nRegra do sistema: item no orçamento não é item executado; não aprovado não é trocado; só considerar executado com status de execução real.';
       }
       return old.apply(this, arguments);
     };
-    window.testarGemini.__blindado1010 = true;
+    window.testarCerebroLocal.__blindado1010 = true;
   }
 
   // Peças reais: sempre escondido até segredo local. Evita exposição jurídica acidental.

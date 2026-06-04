@@ -87,6 +87,10 @@
       return 'cot' + Date.now().toString(36) + Math.random().toString(36).slice(2, 14);
     }
   }
+  function safeKey(v) {
+    const raw = String(v == null ? '' : v).trim() || ('k_' + Date.now());
+    return raw.replace(/[.#$\[\]\/]/g, '_');
+  }
   function phoneBR(v) {
     let d = onlyDigits(v);
     if (!d) return '';
@@ -316,13 +320,25 @@
     try { return /^https?:$/i.test(W.location?.protocol || ''); } catch (_) { return false; }
   }
   function publicUrl(token) {
-    const params = { t: J().tid || '', token };
+    const tenantRef = J().oficina?.slug || J().oficina?.publicSlug || J().oficina?.oficinaSlug || J().tid || '';
+    const params = { t: tenantRef, token };
     const cfgParam = encodeFirebaseConfigParam(publicFirebaseConfig());
     if ((W.THIA_PUBLIC_LINKS || {}).incluirFirebaseConfigNoLink === true && cfgParam) params.fcfg = cfgParam;
     if (typeof W.thiaGetPublicUrl === 'function') {
       return W.thiaGetPublicUrl('cotacaoFornecedor', params);
     }
     return 'cotacao.html?' + new URLSearchParams(params).toString();
+  }
+  function valorIAStatusCotacao() {
+    try {
+      return typeof W.thiaValorIAStatus === 'function' ? W.thiaValorIAStatus() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function valorIAAtivoCotacao() {
+    const st = valorIAStatusCotacao();
+    return !!(st && st.enabled && st.tenantId && st.hasDatabaseURL);
   }
   function osRefLabel(os) {
     return 'OS #' + String(os?.numero || os?.id || '').slice(-6).toUpperCase();
@@ -398,6 +414,7 @@
               <textarea class="j-textarea" id="cotRfqObs" rows="3" placeholder="Ex: confirmar marca, modelo, prazo real, frete e disponibilidade para retirada/entrega."></textarea>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+              ${valorIAAtivoCotacao() ? '<button type="button" class="btn-primary" onclick="window.enviarCotacaoPreciaOS()">ENVIAR PARA PREC_IA / ROBO</button>' : ''}
               <button type="button" class="btn-primary" onclick="window.gerarEnvioCotacaoOS()">GERAR MENSAGENS DOS SELECIONADOS</button>
               <button type="button" class="btn-outline" onclick="window.exportarCotacaoFornecedoresOS()">EXPORTAR ANÁLISE COM RESPOSTAS</button>
               <small id="cotRfqAvisoBase" style="font-family:var(--fm);font-size:.62rem;color:var(--muted);"></small>
@@ -496,6 +513,10 @@
   }
 
   W.abrirCotacaoFornecedoresOS = function (osId, itemKey) {
+    if (typeof W.thiaModEnabled === 'function' && !W.thiaModEnabled('cotacao')) {
+      W.toast?.('Modulo de cotacao bloqueado para esta oficina pelo Superadmin.', 'warn');
+      return;
+    }
     abrirCotacaoFornecedoresComItens(osId, [itemKey]);
   };
 
@@ -513,6 +534,10 @@
   };
 
   W.abrirCotacaoFornecedoresOSLote = function (osId, modo) {
+    if (typeof W.thiaModEnabled === 'function' && !W.thiaModEnabled('cotacao')) {
+      W.toast?.('Modulo de cotacao bloqueado para esta oficina pelo Superadmin.', 'warn');
+      return;
+    }
     const root = $('cotacaoPecasOS') || D;
     const boxes = Array.from(root.querySelectorAll('.cotacao-peca-box[data-item-key]'));
     let keys = [];
@@ -785,7 +810,43 @@
     if (typeof W.thiaAudit === 'function') {
       W.thiaAudit('cotacao_pecas_enviada', 'ordens_servico', os.id, null, cotPayload, 'Envio de cotacao para fornecedores').catch(() => {});
     }
-    return { cotacaoId, fornecedores };
+    let valorIA = null;
+    if (typeof W.thiaValorIAAfterSalvarCotacao === 'function') {
+      try {
+        valorIA = await W.thiaValorIAAfterSalvarCotacao({
+          cotacaoId,
+          cotPayload,
+          itensPayload,
+          fornecedores,
+          itemKeys,
+          os,
+          expiraEm,
+          expiraDate,
+          criadoEm
+        });
+        if (valorIA && Array.isArray(valorIA.queues) && valorIA.queues.length) {
+          const links = new Map();
+          valorIA.queues.forEach(q => {
+            if (!q || !q.publicLink) return;
+            links.set(String(q.supplierId || ''), q);
+          });
+          fornecedores.forEach(f => {
+            const sid = safeKey(f.id || f.token || f.nome || f.razao || f.nomeFantasia || '');
+            const q = links.get(sid);
+            if (!q) return;
+            f.linkOficinIA = f.link || '';
+            f.link = q.publicLink;
+            f.linkOrigem = 'Prec_IA';
+            f.valorIAQueueId = q.id || '';
+            f.valorIAQuoteId = valorIA.quoteId || cotacaoId;
+          });
+        }
+      } catch (err) {
+        console.warn('ValorIA nao recebeu a cotacao', err);
+        W.toast?.('Cotacao criada, mas o robo ValorIA nao recebeu a fila: ' + (err.message || err), 'warn');
+      }
+    }
+    return { cotacaoId, fornecedores, valorIA };
   }
 
   function renderMensagens(payload) {
@@ -803,6 +864,7 @@
         <button type="button" class="btn-ghost" onclick="window.copiarTodasMensagensCotacao()">Copiar todas</button>
       </div>
       <small style="display:block;color:var(--muted);font-family:var(--fm);font-size:.60rem;margin-bottom:8px;">WhatsApp Web/wa.me exige confirmacao humana por contato e o navegador pode bloquear varias abas; se isso acontecer, use Copiar todas ou abra uma por vez.</small>
+      ${payload.valorIA?.queueCount ? `<small style="display:block;color:var(--success);font-family:var(--fm);font-size:.62rem;margin-bottom:8px;font-weight:800;">ValorIA: ${payload.valorIA.queueCount} fornecedor(es) colocado(s) na fila do robo. As mensagens manuais continuam disponiveis como contingencia.</small>` : ''}
       ${state.mensagens.map((m, idx) => {
         const c = fornecedorContato(m.fornecedor);
         return `<div class="cot-msg-card">
@@ -815,6 +877,7 @@
             <input class="j-input cot-link-publico" readonly value="${escAttr(m.fornecedor.link || '')}" style="font-size:.68rem;font-family:var(--fm);" title="Link publico individual para este fornecedor">
             <button type="button" class="btn-outline" onclick="window.copiarLinkCotacao(${idx})">Copiar link publico</button>
           </div>
+          ${m.fornecedor.linkOrigem === 'Prec_IA' ? '<small style="display:block;color:var(--success);font-family:var(--fm);font-size:.60rem;margin-top:4px;">Link Prec_IA/ValorIA vinculado a mesma cotacao da O.S.</small>' : ''}
           <div class="cot-msg-actions">
             <button type="button" class="btn-success" onclick="window.abrirCanalCotacao(${idx},'whatsapp')">WhatsApp</button>
             <button type="button" class="btn-outline" onclick="window.abrirCanalCotacao(${idx},'email')">E-mail</button>
@@ -1102,6 +1165,37 @@ ${linhasItens || '<section class="item"><div class="empty">Nenhuma peça de cota
     }
   };
 
+  W.enviarCotacaoPreciaOS = async function () {
+    const st = valorIAStatusCotacao();
+    if (!valorIAAtivoCotacao()) {
+      const detalhe = st && st.enabled && !st.hasDatabaseURL
+        ? ' Banco Prec_IA sem databaseURL configurado.'
+        : '';
+      W.toast?.('Prec_IA/robo nao esta ativo para esta oficina.' + detalhe, 'warn');
+      return;
+    }
+    if (typeof W.thiaValorIAAfterSalvarCotacao !== 'function') {
+      W.toast?.('Integracao Prec_IA nao carregada nesta tela.', 'warn');
+      return;
+    }
+    const lista = selecionados();
+    if (!lista.length) { W.toast?.('Selecione pelo menos um fornecedor.', 'warn'); return; }
+    try {
+      const payload = await salvarSolicitacao(lista);
+      renderMensagens(payload);
+      if (payload.valorIA?.queueCount) {
+        W.toast?.('Prec_IA: cotacao criada e fornecedores enviados para a fila do robo.', 'ok');
+      } else if (payload.valorIA) {
+        W.toast?.('Prec_IA publicou a cotacao, mas nenhum fornecedor tinha WhatsApp valido para fila do robo.', 'warn');
+      } else {
+        W.toast?.('Cotacao criada, mas o Prec_IA nao retornou fila. Verifique a configuracao do tenant.', 'warn');
+      }
+    } catch (err) {
+      console.error(err);
+      W.toast?.('Nao foi possivel enviar para Prec_IA: ' + (err.message || err), 'err');
+    }
+  };
+
   W.gerarEnvioCotacaoOS = async function () {
     const lista = selecionados();
     if (!lista.length) { W.toast?.('Selecione pelo menos um fornecedor.', 'warn'); return; }
@@ -1162,7 +1256,10 @@ ${linhasItens || '<section class="item"><div class="empty">Nenhuma peça de cota
         if (!phone) return;
         const ta = D.querySelectorAll('#cotRfqMensagens .cot-msg-text')[idx];
         const msg = ta ? ta.value : m.mensagem;
-        setTimeout(() => W.open('https://wa.me/' + encodeURIComponent(phone) + '?text=' + encodeURIComponent(msg), '_blank'), idx * 450);
+        setTimeout(() => {
+          if (typeof W.thiaOpenWhatsApp === 'function') W.thiaOpenWhatsApp(phone, msg, { fallbackNavigate: true });
+          else W.open('https://wa.me/' + encodeURIComponent(phone) + '?text=' + encodeURIComponent(msg), '_blank');
+        }, idx * 450);
         abertas++;
       });
       if (!abertas) W.toast?.('Nenhum fornecedor selecionado tem WhatsApp cadastrado.', 'warn');
@@ -1192,7 +1289,8 @@ ${linhasItens || '<section class="item"><div class="empty">Nenhuma peça de cota
     if (canal === 'whatsapp') {
       const phone = phoneBR(c.wpp);
       if (!phone) { W.toast?.('Fornecedor sem WhatsApp cadastrado.', 'warn'); return; }
-      W.open('https://wa.me/' + encodeURIComponent(phone) + '?text=' + encodeURIComponent(msg), '_blank');
+      if (typeof W.thiaOpenWhatsApp === 'function') W.thiaOpenWhatsApp(phone, msg, { fallbackNavigate: true });
+      else W.open('https://wa.me/' + encodeURIComponent(phone) + '?text=' + encodeURIComponent(msg), '_blank');
       return;
     }
     if (canal === 'email') {

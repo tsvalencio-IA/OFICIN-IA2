@@ -177,6 +177,68 @@
     };
   };
 
+  U.roundMoney = function(value) {
+    return +U.parseNumberBR(value).toFixed(2);
+  };
+
+  U.calcularServicoMaoObra = function(servico, cliente, options) {
+    const opts = options || {};
+    const tempo = U.parseNumberBR(servico?.tempo || 0);
+    const valorInformado = U.parseNumberBR(servico?.valor || servico?.valorBruto || 0);
+    const descMO = opts.descMO != null
+      ? U.parseDiscountRate(opts.descMO)
+      : U.getDescontosCliente(cliente, opts.os || {}).descMO;
+    const resolvido = U.resolvePMSPServico(servico, {
+      veiculo: opts.veiculo,
+      fallbackValorHora: opts.fallbackValorHora
+    });
+    const origem = U.normalizeText(servico?.origemServico || '');
+    const valorHoraManual = servico?.valorHoraManual === true || servico?.valorHoraManual === '1';
+    const origemTempa = origem.includes('tempa') || origem.includes('tabela');
+    const temBaseTabela = !!(
+      opts.forcarCalculoHora ||
+      servico?.secaoHora ||
+      servico?.secaoHoraKey ||
+      servico?.secaoHoraLabel ||
+      servico?.valorHoraSecao ||
+      servico?.valorHoraTabela ||
+      servico?.codigoTabela ||
+      servico?.codigoTempa ||
+      servico?.codigoInterno ||
+      servico?.codInterno ||
+      servico?.codigoServicoInterno ||
+      servico?.sistemaTabela ||
+      origemTempa
+    );
+    const valorHoraPreferido = opts.valorHoraInput != null ? opts.valorHoraInput : (
+      valorHoraManual
+        ? (servico?.valorHora || servico?.valorHoraSecao || servico?.precoHora || servico?.valorHoraTabela || resolvido.valorHoraTabela || resolvido.valorHora || opts.fallbackValorHora || 0)
+        : (servico?.valorHoraSecao || servico?.precoHora || servico?.valorHoraTabela || resolvido.valorHoraTabela || (temBaseTabela ? (resolvido.valorHora || servico?.valorHora) : 0) || opts.fallbackValorHora || 0)
+    );
+    const valorHora = U.parseNumberBR(valorHoraPreferido);
+    const valorManualTotal = servico?.valorManual === true || servico?.valorManual === '1';
+    const temHoraExplicita = opts.valorHoraInput != null || valorHoraManual || !!(servico?.valorHoraSecao || servico?.valorHoraTabela || servico?.precoHora);
+    const usaCalculoHora = tempo > 0 && valorHora > 0 && (
+      temBaseTabela ||
+      valorHoraManual ||
+      opts.forcarCalculoHora === true ||
+      (opts.usarHoraQuandoDisponivel === true && temHoraExplicita && !valorManualTotal)
+    );
+    const bruto = usaCalculoHora ? U.roundMoney(tempo * valorHora) : U.roundMoney(valorInformado);
+    const valorFinal = U.roundMoney(bruto * (1 - descMO));
+    return {
+      tempo,
+      valorHora,
+      valorHoraTabela: U.parseNumberBR(resolvido.valorHoraTabela || servico?.valorHoraTabela || 0),
+      bruto,
+      valorBruto: bruto,
+      valorFinal,
+      descPct: descMO,
+      usaCalculoHora,
+      resolvido
+    };
+  };
+
   U.getDescontosCliente = function(cliente, os) {
     const descMO = os?.descMO != null ? U.parseDiscountRate(os.descMO) : U.parseDiscountRate(cliente?.govDescMO || 0);
     const descPeca = os?.descPeca != null ? U.parseDiscountRate(os.descPeca) : U.parseDiscountRate(cliente?.govDescPeca || 0);
@@ -190,24 +252,28 @@
   U.buildBudgetItems = function(os, cliente) {
     const descontos = U.getDescontosCliente(cliente, os);
     const servicos = (os?.servicos || []).map((s, index) => {
-      const valorUnit = U.parseNumberBR(s.valor);
+      const calc = U.calcularServicoMaoObra(s, cliente, { os, descMO: descontos.descMO, usarHoraQuandoDisponivel: true });
+      const valorUnit = calc.valorBruto;
       const qtd = 1;
-      const bruto = +(valorUnit * qtd).toFixed(2);
-      const final = +(bruto * (1 - descontos.descMO)).toFixed(2);
+      const bruto = calc.valorBruto;
+      const final = calc.valorFinal;
       return {
         key: 'servico-' + index,
         tipo: 'servico',
         labelTipo: 'Servico',
         index,
-        codigo: s.codigoTabela || s.codigo || '',
+        codigoInterno: s.codigoInterno || s.codInterno || s.codigoServicoInterno || '',
+        codigoTabela: s.codigoTabela || s.codigoTempa || '',
+        codigo: s.codigoInterno || s.codInterno || s.codigoServicoInterno || s.codigoTabela || s.codigo || '',
         sistema: s.secaoHoraLabel || s.sistemaTabela || s.sistema || '',
         desc: s.desc || '',
-        tempo: U.parseNumberBR(s.tempo),
+        tempo: calc.tempo,
         qtd,
         valorUnit,
-        valorHora: U.parseNumberBR(s.valorHora || 0) || (U.parseNumberBR(s.tempo) > 0 ? +(valorUnit / U.parseNumberBR(s.tempo)).toFixed(2) : 0),
+        valorHora: calc.valorHora,
         valorBruto: bruto,
-        valorFinal: final
+        valorFinal: final,
+        usaCalculoHora: calc.usaCalculoHora
       };
     });
     const pecas = (os?.pecas || []).map((p, index) => {
@@ -222,7 +288,7 @@
         index,
         codigo: p.codigo || p.cod || '',
         sistema: p.sistemaTabela || p.sistema || '',
-        desc: p.desc || p.descricao || '',
+        desc: p.desc || p.descricao || p.descLivre || p.descricaoPeca || p.nomePeca || p.nome || p.item || '',
         tempo: 0,
         qtd,
         valorUnit,
@@ -279,10 +345,18 @@
   };
 
   U.getValorFaturado = function(os, financeiro) {
+    if (U.pagamentoClienteAVista(os) && os?.totalFaturado != null) {
+      return +U.parseNumberBR(os.totalFaturado || 0).toFixed(2);
+    }
     const totalEntradas = +U.getOSFinanceEntries(os, financeiro)
       .reduce((sum, f) => sum + U.parseNumberBR(f.valor || 0), 0)
       .toFixed(2);
     return totalEntradas || +U.parseNumberBR(os?.totalFaturado || 0).toFixed(2);
+  };
+
+  U.pagamentoClienteAVista = function(os) {
+    const txt = U.normalizeText([os?.pgtoResumoCliente || '', os?.pgtoForma || ''].join(' '));
+    return /\b(pix|dinheiro|debito)\b/.test(txt);
   };
 
   U.getResumoPagamentoOS = function(os, financeiro) {
@@ -292,10 +366,13 @@
       os?.pgtoForma || '',
       ...entradas.map(f => f.pgtoResumo || f.pgto || '')
     ].filter(Boolean)));
-    const vencimentos = entradas
+    let vencimentos = entradas
       .map(f => f.venc || f.dataPgto || f.pgtoData || '')
       .filter(Boolean)
       .sort();
+    if (U.pagamentoClienteAVista(os) && vencimentos.length) {
+      vencimentos = [vencimentos[0]];
+    }
     return {
       forma: formas[0] || '',
       formas,
@@ -865,6 +942,20 @@
     const actorType = options.actorType || 'portal';
     const novoStatus = options.novoStatus || 'Aprovado';
     const timeline = Array.isArray(os.timeline) ? os.timeline.slice() : [];
+    if (options.motivoStatus) {
+      timeline.push({
+        dt: new Date().toISOString(),
+        user: actor,
+        acao: `Status: ${os.status || '-'} -> ${novoStatus}. Motivo: ${options.motivoStatus}`,
+        tipo: 'status_os',
+        statusAnterior: os.status || '',
+        statusNovo: novoStatus,
+        motivo: options.motivoStatus,
+        origem: options.origemStatus || 'aprovacao',
+        interno: true,
+        visivelCliente: true
+      });
+    }
     timeline.push({
       dt: new Date().toISOString(),
       user: actor,

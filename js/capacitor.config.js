@@ -21,13 +21,12 @@ const config = {
   bundledWebRuntime: false,
   server: {
     // Carrega o sistema direto do GitHub Pages (sempre atualizado)
-    // Preencha depois com a URL publica final do cliente.html.
-    // Exemplo: https://SEU-USUARIO.github.io/SEU-REPOSITORIO/cliente.html
-    url: 'https://PREENCHER-DEPOIS/cliente.html',
+    // URL publica oficial do GitHub Pages.
+    url: 'https://tsvalencio-ia.github.io/OFICIN-IA/cliente.html',
     androidScheme: 'https',
     cleartext: false,
     allowNavigation: [
-      'PREENCHER-DEPOIS',
+      'tsvalencio-ia.github.io',
       '*.firebaseio.com',
       '*.firebaseapp.com',
       '*.firestore.googleapis.com',
@@ -37,7 +36,6 @@ const config = {
       'res.cloudinary.com',
       'wa.me',
       'api.whatsapp.com',
-      'generativelanguage.googleapis.com'
     ]
   },
   android: {
