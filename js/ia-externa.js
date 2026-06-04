@@ -14,6 +14,9 @@
   const W = window;
   const D = document;
   const PORTAL_PADRAO = 'https://www.appdiagnosticoautomotivo.com.br/';
+  const SUPABASE_DIAG_URL_PADRAO = 'https://luazuifwvyeabuldlvzw.supabase.co';
+  const SUPABASE_DIAG_FUNCTION_PADRAO = 'diagnostic-chat';
+  const SUPABASE_DIAG_FUNCTION_URL_PADRAO = SUPABASE_DIAG_URL_PADRAO + '/functions/v1/' + SUPABASE_DIAG_FUNCTION_PADRAO;
   const STORAGE_CACHE_PREFIX = 'thia_diag_auto_cfg_';
 
   const original = {
@@ -54,12 +57,24 @@
     const moduloLiberado = modulos.iaDiagnosticoAutomotivo === true || raw.moduloLiberado === true || raw.ativo === true || raw.enabled === true;
     const ativo = raw.ativo === true || raw.enabled === true || moduloLiberado;
     const endpoint = txt(raw.endpoint || raw.proxyUrl || '');
+    const supabaseUrl = txt(raw.supabaseUrl || raw.supabaseProjectUrl || raw.projectUrl || SUPABASE_DIAG_URL_PADRAO).replace(/\/$/, '');
+    const functionName = txt(raw.functionName || raw.funcao || SUPABASE_DIAG_FUNCTION_PADRAO) || SUPABASE_DIAG_FUNCTION_PADRAO;
+    const functionUrl = txt(raw.functionUrl || raw.diagnosticChatUrl || raw.diagnosticEndpoint || raw.urlFuncao || (supabaseUrl + '/functions/v1/' + functionName));
+    const anonKey = txt(raw.anonKey || raw.supabaseAnonKey || raw.publicAnonKey || raw.apiKey || raw.apikey || '');
+    const accessToken = txt(raw.accessToken || raw.sessionToken || raw.bearerToken || '');
+    const usarApiReal = raw.usarApiReal !== false && raw.apiReal !== false && !!(functionUrl || endpoint);
     return {
       ativo: !!ativo,
       moduloLiberado: !!moduloLiberado,
-      modo: endpoint ? 'endpoint' : (raw.modo || raw.mode || 'integrado'),
+      modo: endpoint ? 'endpoint' : (usarApiReal ? 'supabase' : (raw.modo || raw.mode || 'integrado')),
       portalUrl: txt(raw.portalUrl || raw.url || PORTAL_PADRAO) || PORTAL_PADRAO,
       endpoint,
+      supabaseUrl,
+      functionName,
+      functionUrl,
+      anonKey,
+      accessToken,
+      usarApiReal,
       usuario: txt(raw.usuario || raw.login || raw.email || ''),
       senha: txt(raw.senha || raw.password || ''),
       autoLogin: raw.autoLogin !== false,
@@ -158,6 +173,173 @@
       usuario: J.user ? { nome: J.user.nome || J.user.email || '', perfil: J.user.perfil || perfil || '' } : null,
       origem: 'OFICIN-IA'
     };
+  }
+
+
+  function parseRespostaDiagnostico(data) {
+    if (data == null) return '';
+    if (typeof data === 'string') return data;
+    if (typeof data === 'object') {
+      return data.resposta || data.answer || data.response || data.message || data.text || data.diagnosis ||
+             data.diagnostico || data.result || data.output || data.content ||
+             (data.data && parseRespostaDiagnostico(data.data)) ||
+             (Array.isArray(data.messages) && data.messages.length ? parseRespostaDiagnostico(data.messages[data.messages.length - 1]) : '') ||
+             '';
+    }
+    return String(data);
+  }
+
+  function headersSupabaseBase(cfg, token) {
+    const h = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (cfg.anonKey) h.apikey = cfg.anonKey;
+    if (token || cfg.anonKey) h.Authorization = 'Bearer ' + (token || cfg.anonKey);
+    return h;
+  }
+
+  function supabaseSessionKey(cfg) {
+    return 'thia_diag_supabase_session_' + btoa((cfg.usuario || '') + '|' + (cfg.supabaseUrl || '')).replace(/=+$/,'');
+  }
+
+  function lerSessaoSupabase(cfg) {
+    try {
+      const raw = sessionStorage.getItem(supabaseSessionKey(cfg));
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || !data.access_token) return null;
+      if (data.expires_at && Date.now() > (Number(data.expires_at) - 60000)) return null;
+      return data;
+    } catch (_) { return null; }
+  }
+
+  function salvarSessaoSupabase(cfg, data) {
+    try {
+      if (!data || !data.access_token) return;
+      const expiresIn = Number(data.expires_in || 3600);
+      sessionStorage.setItem(supabaseSessionKey(cfg), JSON.stringify({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || '',
+        token_type: data.token_type || 'bearer',
+        expires_at: Date.now() + (expiresIn * 1000),
+        user: data.user || null
+      }));
+    } catch (_) {}
+  }
+
+  async function loginSupabaseDiagnostico(cfg) {
+    if (cfg.accessToken) return { access_token: cfg.accessToken, user: null };
+    const cache = lerSessaoSupabase(cfg);
+    if (cache) return cache;
+
+    if (!cfg.usuario || !cfg.senha) {
+      throw new Error('Usuário e senha da IA Diagnóstico não estão cadastrados no Superadmin.');
+    }
+
+    const url = (cfg.supabaseUrl || SUPABASE_DIAG_URL_PADRAO).replace(/\/$/, '') + '/auth/v1/token?grant_type=password';
+    const headers = headersSupabaseBase(cfg);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ email: cfg.usuario, password: cfg.senha })
+    });
+
+    let data = null, text = '';
+    try { data = await res.json(); } catch (_) { try { text = await res.text(); } catch(__){} }
+    if (!res.ok) {
+      const msg = data?.error_description || data?.msg || data?.message || text || ('HTTP ' + res.status);
+      if (!cfg.anonKey && /api key|apikey|No API key/i.test(msg)) {
+        throw new Error('O Supabase pediu a chave pública anon/apiKey. Cadastre esse campo no Superadmin para a IA Diagnóstico.');
+      }
+      throw new Error('Falha no login da IA Diagnóstico: ' + msg);
+    }
+    salvarSessaoSupabase(cfg, data);
+    return data;
+  }
+
+  function extrairPlaca(txtMsg) {
+    const m = String(txtMsg || '').toUpperCase().match(/\b[A-Z]{3}-?\d[A-Z0-9]\d{2}\b|\b[A-Z]{3}-?\d{4}\b/);
+    return m ? m[0].replace('-', '') : '';
+  }
+
+  async function buscarHistoricoPlaca(pergunta) {
+    const placa = extrairPlaca(pergunta);
+    if (!placa) return null;
+    const tid = getTid();
+    const db = getJ().db || W.db || (W.firebase && W.firebase.firestore ? W.firebase.firestore() : null);
+    if (!db || !db.collection) return { placa, aviso: 'Firestore indisponível no momento.' };
+
+    const colecoes = ['ordens', 'ordensServico', 'os', 'veiculos'];
+    const encontrados = [];
+    for (const nome of colecoes) {
+      try {
+        let snap = null;
+        const ref = db.collection(nome);
+        try {
+          snap = await ref.where('tenantId', '==', tid).limit(40).get();
+        } catch (_) {
+          snap = await ref.limit(40).get();
+        }
+        snap.forEach(doc => {
+          const d = doc.data() || {};
+          const p = String(d.placa || d.veiculoPlaca || d.placaVeiculo || (d.veiculo && d.veiculo.placa) || '').toUpperCase().replace('-', '');
+          if (p && p === placa) {
+            encontrados.push({
+              colecao: nome,
+              id: doc.id,
+              placa,
+              cliente: d.clienteNome || d.cliente || d.nomeCliente || '',
+              veiculo: d.veiculo || d.modelo || d.veiculoModelo || '',
+              defeito: d.defeito || d.reclamacao || d.queixa || d.problema || '',
+              diagnostico: d.diagnostico || d.laudo || '',
+              servicos: d.servicos || d.itens || [],
+              data: d.data || d.criadoEm || d.createdAt || d.abertura || ''
+            });
+          }
+        });
+      } catch (_) {}
+      if (encontrados.length >= 5) break;
+    }
+    return { placa, registros: encontrados.slice(0, 5) };
+  }
+
+  async function perguntarSupabaseDiagnostico(pergunta, perfil) {
+    const cfg = await carregarConfigTenant();
+    const sessao = await loginSupabaseDiagnostico(cfg);
+    const token = sessao.access_token;
+    const contexto = montarContexto(perfil);
+    const historicoPlaca = await buscarHistoricoPlaca(pergunta);
+    if (historicoPlaca) contexto.historicoPlaca = historicoPlaca;
+
+    const url = cfg.functionUrl || SUPABASE_DIAG_FUNCTION_URL_PADRAO;
+    const payloads = [
+      { message: pergunta, session_id: cfg.sessionId || null, context: contexto, locale: 'pt-BR', source: 'OFICIN-IA' },
+      { message: pergunta, sessionId: cfg.sessionId || null, context: contexto, language: 'pt-BR' },
+      { prompt: pergunta, context: contexto, locale: 'pt-BR' },
+      { pergunta, contexto }
+    ];
+
+    let ultimoErro = null;
+    for (const payload of payloads) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: headersSupabaseBase(cfg, token),
+          body: JSON.stringify(payload)
+        });
+        let data = null, text = '';
+        try { data = await res.json(); } catch (_) { try { text = await res.text(); } catch(__){} }
+        if (!res.ok) {
+          ultimoErro = new Error((data && (data.error || data.message || data.msg)) || text || ('HTTP ' + res.status));
+          if (res.status >= 500) continue;
+          if (res.status === 400 || res.status === 422) continue;
+          throw ultimoErro;
+        }
+        return parseRespostaDiagnostico(data) || text || 'A IA Diagnóstico respondeu, mas não consegui interpretar o formato de retorno.';
+      } catch (err) {
+        ultimoErro = err;
+        if (/Failed to fetch|CORS|NetworkError/i.test(String(err && err.message))) break;
+      }
+    }
+    throw ultimoErro || new Error('A IA Diagnóstico não retornou resposta.');
   }
 
   async function perguntarEndpoint(pergunta, perfil) {
@@ -406,17 +588,22 @@
       return;
     }
 
-    if (cfg.endpoint) {
+    if (cfg.usarApiReal || cfg.endpoint) {
       addUser(message);
-      const lid = addBot('<span class="j-spinner"></span> Consultando IA Diagnóstico Automotivo...');
+      const lid = addBot('<span class="j-spinner"></span> Consultando IA Diagnóstico Automotivo real...');
       try {
-        const answer = await perguntarEndpoint(message, perfil);
+        const answer = cfg.endpoint ? await perguntarEndpoint(message, perfil) : await perguntarSupabaseDiagnostico(message, perfil);
         W.iaHistorico = W.iaHistorico || [];
         W.iaHistorico.push({ role: 'user', text: message });
         W.iaHistorico.push({ role: 'model', text: answer || '' });
         replaceBot(lid, answer ? esc(answer).replace(/\n/g, '<br>') : 'A IA externa não retornou resposta.');
       } catch (err) {
-        replaceBot(lid, 'Não consegui consultar a IA externa agora.<br><small style="color:var(--muted,#94a3b8)">Motivo: ' + esc(err.message || err) + '</small><br><br>Vou responder com a IA local:');
+        const motivo = esc(err.message || err);
+        replaceBot(lid,
+          'Não consegui consultar a IA Diagnóstico por API agora.<br>' +
+          '<small style="color:var(--muted,#94a3b8)">Motivo: ' + motivo + '</small><br><br>' +
+          'Vou manter o atendimento pelo Jarvis local e deixar o portal externo como emergência.'
+        );
         if (typeof original.thiaIAAsk === 'function') {
           if (input) input.value = message;
           return original.thiaIAAsk(inputId || 'iaInput', perfil);
@@ -445,7 +632,8 @@
     const cfg = cfgCache || normalizarConfig(oficinaSessao());
     const ativo = cfg.moduloLiberado && cfg.ativo;
     const endpoint = !!cfg.endpoint;
-    const texto = ativo ? (endpoint ? 'IA Diagnóstico conectada por endpoint' : 'IA Diagnóstico integrada ao tenant') : 'IA Diagnóstico bloqueada';
+    const real = !!cfg.usarApiReal && !endpoint;
+    const texto = ativo ? (endpoint ? 'IA Diagnóstico conectada por endpoint' : (real ? 'IA Diagnóstico real conectada' : 'IA Diagnóstico integrada ao tenant')) : 'IA Diagnóstico bloqueada';
     const cor = ativo ? 'var(--success,#22c55e)' : 'var(--muted,#94a3b8)';
     const conteudo = `
       <span id="thiaDiagIaStatus" style="padding:5px 9px;border-radius:999px;border:1px solid rgba(148,163,184,.25);color:${cor};">${esc(texto)}</span>
@@ -479,6 +667,7 @@
     carregarConfig: carregarConfigTenant,
     montarContexto,
     perguntar: perguntarEndpoint,
+    perguntarSupabase: perguntarSupabaseDiagnostico,
     abrirIntegrado: abrirPortalIntegrado
   };
 
