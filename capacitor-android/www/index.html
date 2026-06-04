@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta charset="UTF-8">
+<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>thIAguinho ERP — Acesso ao Sistema</title>
 <!-- ═══ PWA ═══ -->
@@ -169,6 +169,7 @@ body::after {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/config.js"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
 <script>
 sessionStorage.clear();
 
@@ -247,7 +248,13 @@ function _dadosOficinaSessao(d) {
     firebaseConfig: d.firebaseConfig || null,
     apiKeys: d.apiKeys || {},
     modulos: d.modulos || {},
-    submodulos: d.submodulos || {}
+    submodulos: d.submodulos || {},
+    slug: d.slug || d.publicSlug || d.oficinaSlug || '',
+    publicBaseUrl: d.publicBaseUrl || d.linksPublicos?.baseUrl || '',
+    brain: d.brain || d.cerebro || d.thiaguinhoBrain || {},
+    templates: d.templates || d.modelosDocumentos || {},
+    integracoes: d.integracoes || {},
+    iaDiagnosticoAutomotivo: d.iaDiagnosticoAutomotivo || d.diagnosticoAutomotivoIA || null
   };
 }
 
@@ -287,6 +294,56 @@ async function _buscarOficinaPorLoginAdmin(usr) {
     }
   }
   return null;
+}
+
+function _dbPorFirebaseConfigLogin(cfg) {
+  if (!cfg || !cfg.apiKey || !cfg.projectId) return null;
+  const appName = 'login-tenant-' + String(cfg.projectId).replace(/[^a-z0-9-]/gi, '-');
+  let app = firebase.apps.find(a => a.name === appName);
+  if (!app) app = firebase.initializeApp(cfg, appName);
+  return app.firestore();
+}
+
+async function _buscarFuncionarioPorLogin(usr) {
+  const centralSnap = await db.collection('funcionarios').where('usuario', '==', usr).limit(1).get();
+  if (!centralSnap.empty) {
+    const docF = centralSnap.docs[0];
+    const dF = docF.data();
+    const mae = await db.collection('oficinas').doc(dF.tenantId).get();
+    return { docF, dF, mae, maeData: mae.exists ? mae.data() : null, tenantId: dF.tenantId, tenantDb: db };
+  }
+
+  const oficinas = await db.collection('oficinas').get();
+  for (const ofDoc of oficinas.docs) {
+    const ofi = ofDoc.data() || {};
+    if (ofi.status === 'Bloqueado') continue;
+    const tdb = _dbPorFirebaseConfigLogin(ofi.firebaseConfig);
+    if (!tdb) continue;
+    try {
+      const snapFn = await tdb.collection('funcionarios').where('usuario', '==', usr).limit(1).get();
+      if (!snapFn.empty) {
+        const docF = snapFn.docs[0];
+        return { docF, dF: docF.data(), mae: ofDoc, maeData: ofi, tenantId: ofDoc.id, tenantDb: tdb };
+      }
+    } catch (e) {
+      console.warn('[login equipe tenant]', ofDoc.id, e.message);
+    }
+  }
+  return null;
+}
+
+function _normalizarCargoLogin(v) {
+  return String(v || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+}
+
+function _cargoLabelLogin(v) {
+  return String(v || '').trim() || 'mecanico';
+}
+
+function _cargoAcessoJarvis(v) {
+  return /^(gerente|gestor|dono|proprietario|owner|admin|administrador)$/.test(_normalizarCargoLogin(v));
 }
 
 async function autenticar() {
@@ -346,7 +403,6 @@ async function autenticar() {
         j_role:         'admin',
         j_nome:         loginOficina.adminEmail || d.nomeFantasia || 'Gestor',
         j_admin_email:  loginOficina.adminEmail || (_emailValidoAdminLogin(usr) ? _normalizarEmailAdminLogin(usr) : ''),
-        j_gemini:       d.apiKeys?.gemini      || '',
         j_nicho:        d.nicho                || 'carros',
         j_cloud_name:   d.apiKeys?.cloudName   || 'dmuvm1o6m',
         j_cloud_preset: d.apiKeys?.cloudPreset || 'evolution',
@@ -375,26 +431,32 @@ async function autenticar() {
     }
 
     // ── CAMADA 2: Funcionário/Equipe → equipe.html ──
-    const snapFn = await db.collection('funcionarios').where('usuario', '==', usr).get();
-    if (!snapFn.empty) {
-      const docF = snapFn.docs[0];
-      const dF   = docF.data();
+    const loginFuncionario = await _buscarFuncionarioPorLogin(usr);
+    if (loginFuncionario) {
+      const docF = loginFuncionario.docF;
+      const dF   = loginFuncionario.dF;
 
       if (dF.senha !== pwd) throw new Error('Senha incorreta.');
 
-      const mae = await db.collection('oficinas').doc(dF.tenantId).get();
+      const mae = loginFuncionario.mae;
       if (!mae.exists || mae.data().status === 'Bloqueado') throw new Error('Oficina bloqueada.');
 
-      const maeData = mae.data();
+      const maeData = loginFuncionario.maeData || mae.data();
+      const tenantIdEquipe = loginFuncionario.tenantId || dF.tenantId;
+      const cargoFuncionario = _cargoLabelLogin(dF.cargo || 'mecanico');
+      const acessoJarvis = _cargoAcessoJarvis(cargoFuncionario);
+      const destinoFuncionario = acessoJarvis ? 'jarvis.html' : 'equipe.html';
 
       const sessao = {
-        j_tid:          dF.tenantId,
+        j_tid:          tenantIdEquipe,
         j_tnome:        maeData.nomeFantasia || 'Oficina',
-        j_role:         dF.cargo || 'mecanico',
+        j_role:         acessoJarvis ? 'admin' : cargoFuncionario,
+        j_cargo:        cargoFuncionario,
+        j_cargo_acesso: acessoJarvis ? 'jarvis' : 'equipe',
+        j_actor_type:   'equipe',
         j_nome:         dF.nome,
         j_fid:          docF.id,
         j_comissao:     String(dF.comissao || 0),
-        j_gemini:       maeData.apiKeys?.gemini      || '',
         j_nicho:        maeData.nicho                || 'carros',
         j_cloud_name:   maeData.apiKeys?.cloudName   || 'dmuvm1o6m',
         j_cloud_preset: maeData.apiKeys?.cloudPreset || 'evolution',
@@ -414,9 +476,9 @@ async function autenticar() {
       sessao.j_brand = JSON.stringify(brand);
 
       Object.entries(sessao).forEach(([k, v]) => sessionStorage.setItem(k, v));
-      _salvarCredenciais(usr, pwd, 'equipe.html', dF.tenantId, sessao, brand);
+      _salvarCredenciais(usr, pwd, destinoFuncionario, tenantIdEquipe, sessao, brand);
 
-      window.location.href = 'equipe.html';
+      window.location.href = destinoFuncionario;
       return;
     }
 

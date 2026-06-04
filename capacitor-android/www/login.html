@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta charset="UTF-8">
+<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>thIAguinho ERP — Acesso ao Sistema</title>
 <!-- ═══ PWA ═══ -->
@@ -299,7 +299,6 @@ async function autenticar() {
         j_tnome:        d.nomeFantasia || 'Oficina',
         j_role:         'admin',
         j_nome:         d.nomeFantasia || 'Gestor',
-        j_gemini:       d.apiKeys?.gemini      || '',
         j_nicho:        d.nicho                || 'carros',
         j_cloud_name:   d.apiKeys?.cloudName   || 'dmuvm1o6m',
         j_cloud_preset: d.apiKeys?.cloudPreset || 'evolution',
@@ -347,7 +346,6 @@ async function autenticar() {
         j_nome:         dF.nome,
         j_fid:          docF.id,
         j_comissao:     String(dF.comissao || 0),
-        j_gemini:       maeData.apiKeys?.gemini      || '',
         j_nicho:        maeData.nicho                || 'carros',
         j_cloud_name:   maeData.apiKeys?.cloudName   || 'dmuvm1o6m',
         j_cloud_preset: maeData.apiKeys?.cloudPreset || 'evolution',

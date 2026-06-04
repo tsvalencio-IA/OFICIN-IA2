@@ -23,6 +23,7 @@ if ('serviceWorker' in navigator) {
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Exo+2:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -189,7 +190,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <div class="nav-item active" onclick="ir('s-dashboard',this)">📊 Dashboard</div>
     <div class="nav-item" onclick="ir('s-tenants',this)">🏢 Oficinas (Tenants)</div>
     <div class="nav-sec">CONFIGURAÇÃO</div>
-    <div class="nav-item" onclick="ir('s-ia',this)">🤖 IA / Gemini Key</div>
+    <div class="nav-item" onclick="ir('s-ia',this)">🤖 IA Local / Cérebro</div>
     <div class="nav-item" onclick="ir('s-saas',this)">💰 Financeiro SaaS</div>
     <div class="nav-sec">SUPORTE</div>
     <div class="nav-item" onclick="ir('s-auditoria',this)">🔒 Auditoria Global</div>
@@ -220,7 +221,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="j-card">
         <div class="j-card-head"><div class="j-card-title">🏢 OFICINAS CADASTRADAS</div><button class="btn-primary" onclick="ir('s-tenants',document.querySelector('.nav-item:nth-child(2)'));prepTenant('add');abrirModal('modalTenant')">+ NOVA OFICINA</button></div>
         <div style="padding:0;overflow-x:auto;">
-          <table class="j-table"><thead><tr><th>Oficina</th><th>Nicho</th><th>Acesso</th><th>Status</th><th>Plano</th><th>IA Key</th></tr></thead><tbody id="dashTenants"></tbody></table>
+          <table class="j-table"><thead><tr><th>Oficina</th><th>Nicho</th><th>Acesso</th><th>Status</th><th>Plano</th><th>IA Local</th></tr></thead><tbody id="dashTenants"></tbody></table>
         </div>
       </div>
     </div>
@@ -249,19 +250,32 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <div class="section" id="s-ia">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div class="j-card">
-          <div class="j-card-head"><div class="j-card-title">🔑 CHAVES GLOBAIS DA API</div></div>
+          <div class="j-card-head"><div class="j-card-title">🔑 CONFIGURAÇÃO IA LOCAL</div></div>
           <div style="padding:18px;">
-            <div class="form-group"><label class="j-label">Google Gemini API Key (Global)</label><input type="password" class="j-input" id="iaGeminiKey" placeholder="AIzaSy..."></div>
+            <div class="form-group"><label class="j-label">Motor ativo</label><div class="j-input" style="height:auto;min-height:42px;color:var(--success);display:flex;align-items:center;">IA local por dados do tenant, regras internas e cérebro JSON. Não usa chave externa.</div></div>
             <div class="form-group"><label class="j-label">Cloudinary Cloud Name</label><input class="j-input" id="iaCloudName" placeholder="dmuvm1o6m"></div>
             <div class="form-group"><label class="j-label">Cloudinary Upload Preset</label><input class="j-input" id="iaCloudPreset" placeholder="evolution"></div>
             <button class="btn-cyan" onclick="salvarConfigIA()" style="width:100%;padding:10px;justify-content:center;">SALVAR E PROPAGAR PARA TODOS OS TENANTS</button>
           </div>
         </div>
-        <div class="j-card">
-          <div class="j-card-head"><div class="j-card-title">🎙️ TESTAR GEMINI</div></div>
+        <div class="j-card" style="margin-top:16px;">
+          <div class="j-card-head"><div class="j-card-title">🚗 CREDENCIAL PADRÃO IA DIAGNÓSTICO</div></div>
           <div style="padding:18px;">
-            <div class="form-group"><label class="j-label">Pergunta de Teste</label><textarea class="j-input" id="iaTestInput" rows="3" placeholder="Teste a API aqui..." style="resize:vertical;min-height:80px;"></textarea></div>
-            <button class="btn-primary" onclick="testarGemini()" style="margin-bottom:12px;">TESTAR AGORA</button>
+            <div class="form-row c2">
+              <div class="form-group"><label class="j-label">Usuário padrão</label><input class="j-input" id="iaDiagGlobalUser" placeholder="email/login do portal"></div>
+              <div class="form-group"><label class="j-label">Senha padrão</label><input class="j-input" id="iaDiagGlobalSenha" type="password" placeholder="senha do portal"></div>
+            </div>
+            <div class="form-group"><label class="j-label">URL do portal</label><input class="j-input" id="iaDiagGlobalPortal" value="https://www.appdiagnosticoautomotivo.com.br/"></div>
+            <button class="btn-warn" onclick="aplicarDiagnosticoIAGlobal(false)" style="width:100%;padding:10px;justify-content:center;margin-bottom:8px;">SALVAR COMO PADRÃO SEM LIBERAR TODOS</button>
+            <button class="btn-primary" onclick="aplicarDiagnosticoIAGlobal(true)" style="width:100%;padding:10px;justify-content:center;">LIBERAR E APLICAR PARA TODOS OS TENANTS</button>
+            <div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted2);line-height:1.45;margin-top:8px;">Use com cuidado: o botão de liberar todos ativa o módulo IA Diagnóstico Automotivo em todas as oficinas cadastradas.</div>
+          </div>
+        </div>
+        <div class="j-card">
+          <div class="j-card-head"><div class="j-card-title">🎙️ TESTAR IA LOCAL</div></div>
+          <div style="padding:18px;">
+            <div class="form-group"><label class="j-label">Pergunta de Teste</label><textarea class="j-input" id="iaTestInput" rows="3" placeholder="Pergunte sobre tenants, módulos, auditoria ou riscos carregados..." style="resize:vertical;min-height:80px;"></textarea></div>
+            <button class="btn-primary" onclick="testarCerebroLocalSuperadmin()" style="margin-bottom:12px;">TESTAR AGORA</button>
             <div id="iaTestResult" style="background:rgba(0,0,0,0.3);border-radius:3px;padding:12px;font-size:0.8rem;min-height:60px;color:var(--muted2);display:none;font-family:var(--fm);line-height:1.6;"></div>
           </div>
         </div>
@@ -312,6 +326,10 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
           <option value="multi">🔧 Multi (Carros+Motos)</option>
         </select>
       </div>
+    </div>
+    <div class="form-row c2">
+      <div class="form-group"><label class="j-label">Slug publico da oficina</label><input class="j-input" id="tPublicSlug" placeholder="sos-valencio" style="font-family:var(--fm);text-transform:lowercase"></div>
+      <div class="form-group"><label class="j-label">Base publica opcional</label><input class="j-input" id="tPublicBaseUrl" placeholder="https://tsvalencio-ia.github.io/OFICIN-IA/"></div>
     </div>
     <div class="form-row c2">
       <div class="form-group"><label class="j-label">Razao Social</label><input class="j-input" id="tRazaoSocial" placeholder="S.O.S. MECANICA E ELETRICA LTDA"></div>
@@ -383,7 +401,22 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="form-group"><label class="j-label">Status da Licença</label>
         <select class="j-select" id="tStatus"><option value="Online">Online (Ativo)</option><option value="Trial">Trial</option><option value="Bloqueado">Bloqueado</option></select>
       </div>
-      <div class="form-group"><label class="j-label">Gemini API Key Própria (opcional)</label><input class="j-input" id="tGemini" placeholder="AIzaSy... (deixe vazio para usar a global)"></div>
+      <div class="form-group"><label class="j-label">IA local</label><input class="j-input" value="Cérebro interno ativo neste tenant" disabled></div>
+    </div>
+    <div style="background:rgba(255,184,0,0.06);border:1px solid rgba(255,184,0,0.24);border-radius:6px;padding:12px;margin:10px 0;">
+      <div style="font-family:var(--fm);font-size:0.72rem;color:var(--warn);letter-spacing:1px;font-weight:800;margin-bottom:10px;">IA DIAGNÓSTICO AUTOMOTIVO EXTERNA</div>
+      <label class="mod-check" style="margin-bottom:10px;display:flex;"><input type="checkbox" id="mIADiagExt" value="iaDiagnosticoAutomotivo"> Liberar módulo para esta oficina</label>
+      <div class="form-row c2">
+        <div class="form-group"><label class="j-label">Usuário do portal externo</label><input class="j-input" id="tDiagIAUser" placeholder="email/login comprado"></div>
+        <div class="form-group"><label class="j-label">Senha do portal externo</label><input class="j-input" id="tDiagIASenha" placeholder="senha do portal" type="password" autocomplete="off"></div>
+      </div>
+      <div class="form-row c2">
+        <div class="form-group"><label class="j-label">URL do portal</label><input class="j-input" id="tDiagIAPortalUrl" placeholder="https://www.appdiagnosticoautomotivo.com.br/"></div>
+        <div class="form-group"><label class="j-label">Endpoint/proxy seguro (opcional)</label><input class="j-input" id="tDiagIAEndpoint" placeholder="preencher somente quando houver API/proxy"></div>
+      </div>
+      <div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted2);line-height:1.45;">
+        Sem endpoint conhecido, o OFICIN-IA abre o portal externo e mostra as credenciais da oficina. Quando um endpoint/proxy existir, o chat passa a enviar perguntas automaticamente.
+      </div>
     </div>
     <div class="form-row c2">
       <div class="form-group"><label class="j-label">Cloudinary Cloud Name</label><input class="j-input" id="tCloudName" placeholder="dmuvm1o6m"></div>
@@ -407,6 +440,28 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <div class="form-group"><label class="j-label">Firebase messagingSenderId</label><input class="j-input" id="tFbMessagingSenderId" placeholder="123456789"></div>
       <div class="form-group"><label class="j-label">Firebase appId</label><input class="j-input" id="tFbAppId" placeholder="1:123456789:web:abcdef"></div>
     </div>
+    <div style="background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.25);border-radius:6px;padding:12px;margin:10px 0;">
+      <div style="font-family:var(--fm);font-size:0.72rem;color:var(--purple);letter-spacing:1px;font-weight:800;margin-bottom:10px;">CEREBRO thIAguinho DA OFICINA</div>
+      <div class="form-row c2">
+        <div class="form-group"><label class="j-label">Contexto operacional</label><textarea class="j-input" id="tBrainContexto" rows="4" placeholder="Especialidades, padrao de atendimento, marcas que atende, politicas internas..." style="resize:vertical;min-height:96px;"></textarea></div>
+        <div class="form-group"><label class="j-label">Catalogos / pecas / fornecedores</label><textarea class="j-input" id="tBrainCatalogos" rows="4" placeholder="Catalogos, equivalencias, marcas preferidas, fornecedores, codigos..." style="resize:vertical;min-height:96px;"></textarea></div>
+      </div>
+      <div class="form-row c2">
+        <div class="form-group"><label class="j-label">Erros / DTC / diagnosticos recorrentes</label><textarea class="j-input" id="tBrainErros" rows="4" placeholder="P0300 em modelo X, torque EA111, falhas comuns..." style="resize:vertical;min-height:96px;"></textarea></div>
+        <div class="form-group"><label class="j-label">Regras internas de resposta</label><textarea class="j-input" id="tBrainRegras" rows="4" placeholder="Como responder cliente/equipe/Jarvis, garantias, padroes de compra..." style="resize:vertical;min-height:96px;"></textarea></div>
+      </div>
+      <div class="form-group"><label class="j-label">Procedimentos tecnicos</label><textarea class="j-input" id="tBrainProcedimentos" rows="3" placeholder="Procedimentos e checklists internos usados pela oficina..." style="resize:vertical;min-height:80px;"></textarea></div>
+      <div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted2);line-height:1.45;">O sistema usa estes campos em respostas locais e na IA, sem misturar dados entre oficinas.</div>
+    </div>
+    <div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);border-radius:6px;padding:12px;margin:10px 0;">
+      <div style="font-family:var(--fm);font-size:0.72rem;color:var(--success);letter-spacing:1px;font-weight:800;margin-bottom:10px;">TEMPLATES DA OFICINA</div>
+      <div class="form-row c3">
+        <div class="form-group"><label class="j-label">Template PDF orcamento</label><input class="j-input" id="tTplPdfOrcamento" placeholder="URL/ID/template"></div>
+        <div class="form-group"><label class="j-label">Template PDF laudo</label><input class="j-input" id="tTplPdfLaudo" placeholder="URL/ID/template"></div>
+        <div class="form-group"><label class="j-label">Template planilha PMSP</label><input class="j-input" id="tTplPlanilhaPMSP" placeholder="assets/templates/..."></div>
+      </div>
+      <div class="form-group"><label class="j-label">Observacoes de documento</label><textarea class="j-input" id="tTplObservacoes" rows="2" placeholder="Rodape, validade, textos legais e regras de timbrado..." style="resize:vertical;min-height:64px;"></textarea></div>
+    </div>
     <div class="form-group">
       <label class="j-label" style="margin-bottom:8px;">Módulos Habilitados</label>
       <div class="mod-checks">
@@ -414,7 +469,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <label class="mod-check"><input type="checkbox" id="mCrm" value="crm"> 👥 CRM / Clientes</label>
         <label class="mod-check"><input type="checkbox" id="mEst" value="estoque"> 📦 Estoque</label>
         <label class="mod-check"><input type="checkbox" id="mFin" value="financeiro"> 💰 Financeiro / DRE</label>
-        <label class="mod-check"><input type="checkbox" id="mIA" value="ia"> 🤖 IA / Gemini</label>
+        <label class="mod-check"><input type="checkbox" id="mIA" value="ia"> 🤖 IA Local / Cérebro</label>
         <label class="mod-check"><input type="checkbox" id="mChat" value="chat"> 💬 Chat CRM</label>
         <label class="mod-check"><input type="checkbox" id="mAgd" value="agenda"> 📅 Agenda</label>
         <label class="mod-check"><input type="checkbox" id="mRH" value="rh"> 👷 Equipe / RH</label>
@@ -426,6 +481,16 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <label class="mod-check"><input type="checkbox" id="mComissaoVendas" value="comissaoVendas"> 💸 Comissão sobre vendas</label>
         <label class="mod-check"><input type="checkbox" id="mTabelaTempa" value="tabelaTempa" checked> 📖 Tabela Tempária SINDIREPA</label>
         <label class="mod-check"><input type="checkbox" id="mCilia" value="cilia" checked> 🔎 Pesquisa Cília API</label>
+        <label class="mod-check"><input type="checkbox" id="mCotacao" value="cotacao" checked> Cotacao de pecas / fornecedores</label>
+        <label class="mod-check"><input type="checkbox" id="mClienteOficial" value="clienteOficial" checked> Cliente Oficial / orgao publico</label>
+        <label class="mod-check"><input type="checkbox" id="smClienteTempaOficial" checked> Fiscal pode consultar Tabela Temparia</label>
+        <label class="mod-check"><input type="checkbox" id="mAssinatura" value="assinatura" checked> Assinatura digital</label>
+        <label class="mod-check"><input type="checkbox" id="mPDF" value="pdf" checked> Exportar PDF</label>
+        <label class="mod-check"><input type="checkbox" id="mXLSX" value="xlsx" checked> Exportar XLSX/PMSP</label>
+        <label class="mod-check"><input type="checkbox" id="mAuditoria" value="auditoria" checked> Auditoria</label>
+        <label class="mod-check"><input type="checkbox" id="mRelatorios" value="relatorios" checked> Relatorios</label>
+        <label class="mod-check"><input type="checkbox" id="mExportacoes" value="exportacoes" checked> Exportacoes</label>
+        <label class="mod-check"><input type="checkbox" id="mWhatsappBot" value="whatsappBot"> Bot WhatsApp modular</label>
       </div>
       <div id="modDependenciasAviso" style="margin-top:10px;padding:10px;border:1px solid rgba(255,184,0,.35);background:rgba(255,184,0,.08);color:var(--warn);font-family:var(--fm);font-size:.68rem;line-height:1.45;">
         Dependências comerciais: NF/XML pode alimentar estoque e financeiro; estoque alimenta O.S.; equipe e clienteOficial dependem de O.S.; assinatura alimenta PDF/XLSX.
@@ -635,13 +700,13 @@ function renderDashboard(){
   // Tabela resumo
   $('dashTenants').innerHTML=allTenants.slice(0,8).map(t=>{
     const stCls=t.status==='Online'?'pill-green':t.status==='Trial'?'pill-warn':'pill-danger';
-    return `<tr><td><strong>${t.nomeFantasia||'-'}</strong></td><td><span class="pill pill-purple">${t.nicho||'-'}</span></td><td style="font-family:var(--fm);font-size:0.72rem;color:var(--cyan)">${t.usuario||'-'}</td><td><span class="pill ${stCls}">${t.status||'?'}</span></td><td style="font-family:var(--fm);font-size:0.72rem">${t.plano||'trial'}</td><td style="text-align:center">${t.apiKeys?.gemini?'✅':'❌'}</td></tr>`;
+    return `<tr><td><strong>${t.nomeFantasia||'-'}</strong></td><td><span class="pill pill-purple">${t.nicho||'-'}</span></td><td style="font-family:var(--fm);font-size:0.72rem;color:var(--cyan)">${t.usuario||'-'}</td><td><span class="pill ${stCls}">${t.status||'?'}</span></td><td style="font-family:var(--fm);font-size:0.72rem">${t.plano||'trial'}</td><td style="text-align:center">${t.modulos?.ia===false?'Bloq.':'Ativa'}</td></tr>`;
   }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--fm);font-size:0.75rem">Nenhum tenant cadastrado</td></tr>';
 }
 
 function renderTenants(filter=''){
   const list=filter?allTenants.filter(t=>(t.nomeFantasia||'').toLowerCase().includes(filter.toLowerCase())):allTenants;
-  const mods_map={os:'O.S.',crm:'CRM',estoque:'Est.',financeiro:'Fin.',ia:'IA',chat:'Chat',agenda:'Agd.',rh:'RH',comissoes:'Comiss.',autoPecas:'Autopeças',vendaTerceiros:'Terceiros',varejo:'Varejo',atacado:'Atacado',comissaoVendas:'Com.Vendas',tabelaTempa:'Tempa'};
+  const mods_map={os:'O.S.',crm:'CRM',estoque:'Est.',financeiro:'Fin.',ia:'IA',iaDiagnosticoAutomotivo:'IA Diag.',chat:'Chat',agenda:'Agd.',rh:'RH',comissoes:'Comiss.',autoPecas:'Autopeças',vendaTerceiros:'Terceiros',varejo:'Varejo',atacado:'Atacado',comissaoVendas:'Com.Vendas',tabelaTempa:'Tempa'};
   $('tbTenants').innerHTML=list.map(t=>{
     const stCls=t.status==='Online'?'pill-green':t.status==='Trial'?'pill-warn':'pill-danger';
     const mods=Object.entries(t.modulos||{}).filter(([,v])=>v).map(([k])=>`<span class="pill pill-purple" style="font-size:0.5rem;padding:1px 6px">${mods_map[k]||k}</span>`).join(' ');
@@ -666,7 +731,9 @@ function filtrarTenants(v){renderTenants(v);}
 // TENANT CRUD
 const CAMPOS_DADOS_OFICINA=[
   'tRazaoSocial','tCnpj','tEndereco','tNumero','tBairro','tCidade','tUf','tCep',
-  'tTelefone','tEmail','tResponsavel','tOrcamentista','tRepresentante','tLogoUrl','tAssinaturaNome','tAssinaturaCargo','tAssinaturaDocumento','tAssinaturaUrl'
+  'tTelefone','tEmail','tResponsavel','tOrcamentista','tRepresentante','tLogoUrl','tAssinaturaNome','tAssinaturaCargo','tAssinaturaDocumento','tAssinaturaUrl',
+  'tPublicSlug','tPublicBaseUrl','tBrainContexto','tBrainCatalogos','tBrainErros','tBrainRegras','tBrainProcedimentos',
+  'tTplPdfOrcamento','tTplPdfLaudo','tTplPlanilhaPMSP','tTplObservacoes','tDiagIAUser','tDiagIASenha','tDiagIAPortalUrl','tDiagIAEndpoint'
 ];
 const CAMPOS_FIREBASE_OFICINA=[
   'tFbApiKey','tFbAuthDomain','tFbProjectId','tFbStorageBucket','tFbMessagingSenderId','tFbAppId'
@@ -709,19 +776,27 @@ function emailsAdminTenantTexto(t){
   return String(src||'').split(/[\n,;]+/).map(v=>v.trim()).filter(Boolean).join('\n');
 }
 
+function normalizarSlugTenant(raw,nome){
+  const base=String(raw||nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');
+  return base.slice(0,60);
+}
+
 function prepTenant(mode,id=null){
-  ['tId','tNome','tUser','tSenha','tAdminEmails','tWpp','tGemini','tCloudName','tCloudPreset','tLogoFile','tAssinaturaFile',...CAMPOS_DADOS_OFICINA,...CAMPOS_FIREBASE_OFICINA].forEach(f=>{if($(f))$(f).value='';});
-  ['mOS','mCrm','mEst','mFin','mIA','mChat','mAgd','mRH','mComissoes','mAutoPecas','mVendaTerceiros','mVarejo','mAtacado','mComissaoVendas','mTabelaTempa','mCilia'].forEach(f=>{if($(f))$(f).checked=false;});
+  ['tId','tNome','tUser','tSenha','tAdminEmails','tWpp','tCloudName','tCloudPreset','tLogoFile','tAssinaturaFile',...CAMPOS_DADOS_OFICINA,...CAMPOS_FIREBASE_OFICINA].forEach(f=>{if($(f))$(f).value='';});
+  ['mOS','mCrm','mEst','mFin','mIA','mIADiagExt','mChat','mAgd','mRH','mComissoes','mAutoPecas','mVendaTerceiros','mVarejo','mAtacado','mComissaoVendas','mTabelaTempa','mCilia','mCotacao','mClienteOficial','smClienteTempaOficial','mAssinatura','mPDF','mXLSX','mAuditoria','mRelatorios','mExportacoes','mWhatsappBot'].forEach(f=>{if($(f))$(f).checked=false;});
   $('tStatus').value='Online'; $('tNicho').value='carros'; $('tPlano').value='trial';
-  $('tCloudName').value='dmuvm1o6m'; $('tCloudPreset').value='evolution';
+  $('tCloudName').value='dmuvm1o6m'; $('tCloudPreset').value='evolution'; if($('tDiagIAPortalUrl')) $('tDiagIAPortalUrl').value='https://www.appdiagnosticoautomotivo.com.br/';
   $('modalTenantTitle').innerText='NOVA OFICINA (TENANT)';
   // Habilita módulos padrão
-  ['mOS','mCrm','mEst','mFin','mAutoPecas','mVendaTerceiros','mVarejo','mComissaoVendas','mTabelaTempa','mCilia'].forEach(f=>{if($(f))$(f).checked=true;});
+  ['mOS','mCrm','mEst','mFin','mAutoPecas','mVendaTerceiros','mVarejo','mComissaoVendas','mTabelaTempa','mCilia','mCotacao','mClienteOficial','smClienteTempaOficial','mAssinatura','mPDF','mXLSX','mAuditoria','mRelatorios','mExportacoes'].forEach(f=>{if($(f))$(f).checked=true;});
   if(mode==='edit'&&id){
     const t=allTenants.find(x=>x.id===id); if(!t) return;
     $('tId').value=t.id; $('tNome').value=t.nomeFantasia||''; $('tUser').value=t.usuario||'';
     $('tSenha').value=t.senha||''; $('tWpp').value=t.wpp||''; $('tNicho').value=t.nicho||'carros';
     if($('tAdminEmails')) $('tAdminEmails').value=emailsAdminTenantTexto(t);
+    if($('tPublicSlug')) $('tPublicSlug').value=t.slug||t.publicSlug||t.oficinaSlug||'';
+    if($('tPublicBaseUrl')) $('tPublicBaseUrl').value=t.publicBaseUrl||t.linksPublicos?.baseUrl||'';
     $('tPlano').value=t.plano||'trial'; $('tStatus').value=t.status||'Online';
     $('tRazaoSocial').value=t.razaoSocial||t.razao||'';
     $('tCnpj').value=t.cnpj||t.doc||t.documento||'';
@@ -742,7 +817,7 @@ function prepTenant(mode,id=null){
     if($('tAssinaturaCargo')) $('tAssinaturaCargo').value=ass.cargo||ass.funcao||'Responsável técnico';
     if($('tAssinaturaDocumento')) $('tAssinaturaDocumento').value=ass.documento||ass.cpfCnpj||'';
     if($('tAssinaturaUrl')) $('tAssinaturaUrl').value=ass.url||ass.assinaturaUrl||ass.imagemUrl||'';
-    $('tGemini').value=t.apiKeys?.gemini||''; $('tCloudName').value=t.apiKeys?.cloudName||'dmuvm1o6m';
+    $('tCloudName').value=t.apiKeys?.cloudName||'dmuvm1o6m';
     $('tCloudPreset').value=t.apiKeys?.cloudPreset||'evolution';
     const fb=t.firebaseConfig||{};
     $('tFbApiKey').value=fb.apiKey||'';
@@ -751,9 +826,25 @@ function prepTenant(mode,id=null){
     $('tFbStorageBucket').value=fb.storageBucket||'';
     $('tFbMessagingSenderId').value=fb.messagingSenderId||'';
     $('tFbAppId').value=fb.appId||'';
+    const brain=t.brain||t.cerebro||t.thiaguinhoBrain||{};
+    if($('tBrainContexto')) $('tBrainContexto').value=brain.contexto||'';
+    if($('tBrainCatalogos')) $('tBrainCatalogos').value=brain.catalogos||'';
+    if($('tBrainErros')) $('tBrainErros').value=brain.erros||'';
+    if($('tBrainRegras')) $('tBrainRegras').value=brain.regras||'';
+    if($('tBrainProcedimentos')) $('tBrainProcedimentos').value=brain.procedimentos||'';
+    const tpl=t.templates||t.modelosDocumentos||{};
+    if($('tTplPdfOrcamento')) $('tTplPdfOrcamento').value=tpl.pdfOrcamento||'';
+    if($('tTplPdfLaudo')) $('tTplPdfLaudo').value=tpl.pdfLaudo||'';
+    if($('tTplPlanilhaPMSP')) $('tTplPlanilhaPMSP').value=tpl.planilhaPMSP||'';
+    if($('tTplObservacoes')) $('tTplObservacoes').value=tpl.observacoes||'';
     const m=t.modulos||{};
     $('mOS').checked=!!m.os; $('mCrm').checked=!!m.crm; $('mEst').checked=!!m.estoque;
-    $('mFin').checked=!!m.financeiro; $('mIA').checked=!!m.ia; $('mChat').checked=!!m.chat;
+    $('mFin').checked=!!m.financeiro; $('mIA').checked=!!m.ia; if($('mIADiagExt')) $('mIADiagExt').checked=!!m.iaDiagnosticoAutomotivo; $('mChat').checked=!!m.chat;
+    const iaDiag=(t.integracoes&&t.integracoes.iaDiagnosticoAutomotivo)||t.iaDiagnosticoAutomotivo||t.diagnosticoAutomotivoIA||{};
+    if($('tDiagIAUser')) $('tDiagIAUser').value=iaDiag.usuario||iaDiag.login||iaDiag.email||'';
+    if($('tDiagIASenha')) $('tDiagIASenha').value=iaDiag.senha||iaDiag.password||'';
+    if($('tDiagIAPortalUrl')) $('tDiagIAPortalUrl').value=iaDiag.portalUrl||iaDiag.url||'https://www.appdiagnosticoautomotivo.com.br/';
+    if($('tDiagIAEndpoint')) $('tDiagIAEndpoint').value=iaDiag.endpoint||iaDiag.proxyUrl||'';
     $('mAgd').checked=!!m.agenda; $('mRH').checked=!!m.rh;
     if($('mComissoes')) $('mComissoes').checked=!!m.comissoes;
     if($('mAutoPecas')) $('mAutoPecas').checked=!!m.autoPecas;
@@ -763,6 +854,16 @@ function prepTenant(mode,id=null){
     if($('mComissaoVendas')) $('mComissaoVendas').checked=m.comissaoVendas !== false && (!!m.autoPecas || !!m.estoque);
     if($('mTabelaTempa')) $('mTabelaTempa').checked=m.tabelaTempa !== false; // default ligado
     if($('mCilia')) $('mCilia').checked=m.cilia !== false; // default ligado
+    if($('mCotacao')) $('mCotacao').checked=m.cotacao !== false;
+    if($('mClienteOficial')) $('mClienteOficial').checked=m.clienteOficial !== false;
+    if($('smClienteTempaOficial')) $('smClienteTempaOficial').checked=(t.submodulos?.cliente?.tabelaTempaOficial !== false);
+    if($('mAssinatura')) $('mAssinatura').checked=m.assinatura !== false;
+    if($('mPDF')) $('mPDF').checked=m.pdf !== false;
+    if($('mXLSX')) $('mXLSX').checked=m.xlsx !== false;
+    if($('mAuditoria')) $('mAuditoria').checked=m.auditoria !== false;
+    if($('mRelatorios')) $('mRelatorios').checked=m.relatorios !== false;
+    if($('mExportacoes')) $('mExportacoes').checked=m.exportacoes !== false;
+    if($('mWhatsappBot')) $('mWhatsappBot').checked=!!m.whatsappBot;
     $('modalTenantTitle').innerText='EDITAR TENANT: '+(t.nomeFantasia||'').toUpperCase();
   }
 }
@@ -819,7 +920,7 @@ async function uploadLogoTenant(){
 function montarSubmodulosComerciais(){
   const mod = {
     os:$('mOS').checked, crm:$('mCrm').checked, estoque:$('mEst').checked,
-    financeiro:$('mFin').checked, ia:$('mIA').checked, chat:$('mChat').checked,
+    financeiro:$('mFin').checked, ia:$('mIA').checked, iaDiagnosticoAutomotivo:$('mIADiagExt')?$('mIADiagExt').checked:false, chat:$('mChat').checked,
     agenda:$('mAgd').checked, rh:$('mRH').checked,
     comissoes:$('mComissoes')?$('mComissoes').checked:false,
     autoPecas:$('mAutoPecas')?$('mAutoPecas').checked:false,
@@ -828,16 +929,26 @@ function montarSubmodulosComerciais(){
     atacado:$('mAtacado')?$('mAtacado').checked:false,
     comissaoVendas:$('mComissaoVendas')?$('mComissaoVendas').checked:false,
     tabelaTempa:$('mTabelaTempa')?$('mTabelaTempa').checked:true,
-    cilia:$('mCilia')?$('mCilia').checked:true
+    cilia:$('mCilia')?$('mCilia').checked:true,
+    cotacao:$('mCotacao')?$('mCotacao').checked:true,
+    clienteOficial:$('mClienteOficial')?$('mClienteOficial').checked:true,
+    assinatura:$('mAssinatura')?$('mAssinatura').checked:true,
+    pdf:$('mPDF')?$('mPDF').checked:true,
+    xlsx:$('mXLSX')?$('mXLSX').checked:true,
+    auditoria:$('mAuditoria')?$('mAuditoria').checked:true,
+    relatorios:$('mRelatorios')?$('mRelatorios').checked:true,
+    exportacoes:$('mExportacoes')?$('mExportacoes').checked:true,
+    whatsappBot:$('mWhatsappBot')?$('mWhatsappBot').checked:false
   };
   return {
-    os:{criar:mod.os, editar:mod.os, aprovar:mod.os, salvarContinuar:mod.os, pdf:mod.os, xlsx:mod.os, assinatura:mod.os, guincho:mod.os, temparia:mod.os&&mod.tabelaTempa, execucaoEquipe:mod.os&&mod.rh, auditoria:mod.os},
+    os:{criar:mod.os, editar:mod.os, aprovar:mod.os, salvarContinuar:mod.os, pdf:mod.os&&mod.pdf, xlsx:mod.os&&mod.xlsx, assinatura:mod.os&&mod.assinatura, guincho:mod.os, temparia:mod.os&&mod.tabelaTempa, execucaoEquipe:mod.os&&mod.rh, auditoria:mod.os&&mod.auditoria, cotacao:mod.os&&mod.cotacao},
     financeiro:{receitas:mod.financeiro, despesas:mod.financeiro, boletos:mod.financeiro, dre:mod.financeiro, contasPagar:mod.financeiro, contasReceber:mod.financeiro, boletosNF:mod.financeiro, financeiroPorOS:mod.financeiro&&mod.os, receitasBalcao:mod.financeiro&&mod.autoPecas, comissoesVendas:mod.financeiro&&mod.comissaoVendas},
     nfXml:{entradaXml:mod.estoque, entradaManual:mod.estoque, fornecedores:mod.estoque, vincularOS:mod.estoque&&mod.os, estoque:mod.estoque, devolucao:mod.estoque, garantia:mod.estoque, financeiroNF:mod.estoque&&mod.financeiro},
     autoPecas:{balcao:mod.autoPecas, terceiros:mod.autoPecas&&mod.vendaTerceiros, varejo:mod.autoPecas&&mod.varejo, atacado:mod.autoPecas&&mod.atacado, baixaEstoque:mod.autoPecas&&mod.estoque, financeiro:mod.autoPecas&&mod.financeiro, comissaoVendas:mod.autoPecas&&mod.comissaoVendas},
     ia:{jarvis:mod.ia, equipe:mod.ia&&mod.rh, superadmin:mod.ia, cliente:mod.ia&&mod.crm},
-    cliente:{portalCliente:mod.crm, clienteOficial:mod.crm&&mod.os, mensagens:mod.crm&&mod.chat, aprovacaoOnline:mod.crm&&mod.os, documentos:mod.crm&&mod.os},
-    integracoes:{cilia:mod.cilia, tabelaTempa:mod.tabelaTempa, pwa:true, apk:true, exe:true}
+    cliente:{portalCliente:mod.crm, clienteOficial:mod.crm&&mod.os&&mod.clienteOficial, tabelaTempaOficial:mod.crm&&mod.os&&mod.clienteOficial&&mod.tabelaTempa&&($('smClienteTempaOficial') ? $('smClienteTempaOficial').checked : true), mensagens:mod.crm&&mod.chat, aprovacaoOnline:mod.crm&&mod.os, documentos:mod.crm&&mod.os},
+    documentos:{pdf:mod.pdf&&mod.os, xlsx:mod.xlsx&&mod.os, templates:mod.templates!==false, assinatura:mod.assinatura&&mod.os},
+    integracoes:{cilia:mod.cilia, tabelaTempa:mod.tabelaTempa, cotacao:mod.cotacao, whatsappBot:mod.whatsappBot&&mod.chat, pwa:true, apk:true, exe:true}
   };
 }
 
@@ -850,20 +961,40 @@ function avisosDependenciasModulos(){
   if($('mAutoPecas')?.checked && !$('mEst')?.checked) avisos.push('Autopeças precisa de Estoque para baixa e margem por item.');
   if($('mAutoPecas')?.checked && !$('mFin')?.checked) avisos.push('Autopeças sem Financeiro registra venda, mas não gera caixa/contas a receber.');
   if($('mComissaoVendas')?.checked && !$('mAutoPecas')?.checked) avisos.push('Comissão de vendas depende do módulo Autopeças/Balcão.');
+  if($('mCotacao')?.checked && (!$('mOS')?.checked || !$('mEst')?.checked)) avisos.push('Cotacao de pecas depende de O.S. e Estoque/Fornecedores.');
+  if($('mClienteOficial')?.checked && (!$('mOS')?.checked || !$('mCrm')?.checked)) avisos.push('Cliente Oficial depende de O.S. e CRM/Clientes.');
+  if($('smClienteTempaOficial')?.checked && (!$('mClienteOficial')?.checked || !$('mTabelaTempa')?.checked)) avisos.push('Consulta Tempária do fiscal depende de Cliente Oficial e Tabela Tempária.');
+  if($('mPDF')?.checked && !$('mOS')?.checked) avisos.push('PDF depende de O.S.');
+  if($('mXLSX')?.checked && !$('mOS')?.checked) avisos.push('XLSX/PMSP depende de O.S.');
+  if($('mAssinatura')?.checked && !$('mOS')?.checked) avisos.push('Assinatura digital depende de O.S.');
+  if($('mWhatsappBot')?.checked && !$('mChat')?.checked) avisos.push('Bot WhatsApp depende de Chat/CRM habilitado.');
   return avisos;
 }
 
 async function salvarTenant(){
   if(!$v('tNome')||!$v('tUser')||!$v('tSenha')){toast('⚠ Preencha nome, usuário e senha','warn');return;}
-  const geminiKey=$v('tGemini');
   const firebaseConfig=montarFirebaseOficina();
   const adminEmailsParsed=normalizarEmailsAdminTenant($v('tAdminEmails'));
   if(adminEmailsParsed.invalidos.length){
     toast('E-mail admin invalido: '+adminEmailsParsed.invalidos[0],'warn');
     return;
   }
+  const slugPublico=normalizarSlugTenant($v('tPublicSlug'),$v('tNome'));
+  const id=$v('tId');
+  if(slugPublico){
+    try{
+      const dup=await db.collection('oficinas').where('slug','==',slugPublico).limit(2).get();
+      const conflito=dup.docs.find(d=>d.id!==id);
+      if(conflito){toast('Slug publico ja usado por outra oficina: '+slugPublico,'warn');return;}
+    }catch(e){}
+  }
   const payload={
     nomeFantasia:$v('tNome'), usuario:$v('tUser'), senha:$v('tSenha'),
+    slug:slugPublico,
+    publicSlug:slugPublico,
+    oficinaSlug:slugPublico,
+    publicBaseUrl:$v('tPublicBaseUrl'),
+    linksPublicos:{baseUrl:$v('tPublicBaseUrl')},
     adminEmails:adminEmailsParsed.emails,
     emailsAdmin:adminEmailsParsed.emails,
     adminsEmails:adminEmailsParsed.emails,
@@ -905,14 +1036,60 @@ async function salvarTenant(){
     },
     enderecoCompleto:montarEnderecoOficina(),
     apiKeys:{
-      gemini:geminiKey||await buscarKeyGlobal(),
       cloudName:$v('tCloudName')||'dmuvm1o6m',
       cloudPreset:$v('tCloudPreset')||'evolution'
     },
     firebaseConfig,
+    brain:{
+      contexto:$v('tBrainContexto'),
+      catalogos:$v('tBrainCatalogos'),
+      erros:$v('tBrainErros'),
+      regras:$v('tBrainRegras'),
+      procedimentos:$v('tBrainProcedimentos'),
+      atualizadoEm:new Date().toISOString()
+    },
+    cerebro:{
+      contexto:$v('tBrainContexto'),
+      catalogos:$v('tBrainCatalogos'),
+      erros:$v('tBrainErros'),
+      regras:$v('tBrainRegras'),
+      procedimentos:$v('tBrainProcedimentos'),
+      atualizadoEm:new Date().toISOString()
+    },
+    templates:{
+      pdfOrcamento:$v('tTplPdfOrcamento'),
+      pdfLaudo:$v('tTplPdfLaudo'),
+      planilhaPMSP:$v('tTplPlanilhaPMSP'),
+      observacoes:$v('tTplObservacoes'),
+      atualizadoEm:new Date().toISOString()
+    },
+    integracoes:{
+      iaDiagnosticoAutomotivo:{
+        ativo:$('mIADiagExt')?$('mIADiagExt').checked:false,
+        moduloLiberado:$('mIADiagExt')?$('mIADiagExt').checked:false,
+        modo:$v('tDiagIAEndpoint')?'endpoint':'portal',
+        nome:'Diagnóstico Automotivo',
+        portalUrl:$v('tDiagIAPortalUrl')||'https://www.appdiagnosticoautomotivo.com.br/',
+        endpoint:$v('tDiagIAEndpoint'),
+        usuario:$v('tDiagIAUser'),
+        login:$v('tDiagIAUser'),
+        email:$v('tDiagIAUser'),
+        senha:$v('tDiagIASenha'),
+        password:$v('tDiagIASenha'),
+        atualizadoEm:new Date().toISOString()
+      }
+    },
+    iaDiagnosticoAutomotivo:{
+      ativo:$('mIADiagExt')?$('mIADiagExt').checked:false,
+      portalUrl:$v('tDiagIAPortalUrl')||'https://www.appdiagnosticoautomotivo.com.br/',
+      endpoint:$v('tDiagIAEndpoint'),
+      usuario:$v('tDiagIAUser'),
+      senha:$v('tDiagIASenha'),
+      atualizadoEm:new Date().toISOString()
+    },
     modulos:{
       os:$('mOS').checked, crm:$('mCrm').checked, estoque:$('mEst').checked,
-      financeiro:$('mFin').checked, ia:$('mIA').checked, chat:$('mChat').checked,
+      financeiro:$('mFin').checked, ia:$('mIA').checked, iaDiagnosticoAutomotivo:$('mIADiagExt')?$('mIADiagExt').checked:false, chat:$('mChat').checked,
       agenda:$('mAgd').checked, rh:$('mRH').checked,
       comissoes:$('mComissoes')?$('mComissoes').checked:false,
       autoPecas:$('mAutoPecas')?$('mAutoPecas').checked:false,
@@ -921,13 +1098,21 @@ async function salvarTenant(){
       atacado:$('mAtacado')?$('mAtacado').checked:false,
       comissaoVendas:$('mComissaoVendas')?$('mComissaoVendas').checked:false,
       tabelaTempa:$('mTabelaTempa')?$('mTabelaTempa').checked:true,  // default true
-      cilia:$('mCilia')?$('mCilia').checked:true
+      cilia:$('mCilia')?$('mCilia').checked:true,
+      cotacao:$('mCotacao')?$('mCotacao').checked:true,
+      clienteOficial:$('mClienteOficial')?$('mClienteOficial').checked:true,
+      assinatura:$('mAssinatura')?$('mAssinatura').checked:true,
+      pdf:$('mPDF')?$('mPDF').checked:true,
+      xlsx:$('mXLSX')?$('mXLSX').checked:true,
+      auditoria:$('mAuditoria')?$('mAuditoria').checked:true,
+      relatorios:$('mRelatorios')?$('mRelatorios').checked:true,
+      exportacoes:$('mExportacoes')?$('mExportacoes').checked:true,
+      whatsappBot:$('mWhatsappBot')?$('mWhatsappBot').checked:false
     },
     submodulos:montarSubmodulosComerciais(),
     dependenciasModulosAvisos:avisosDependenciasModulos(),
     updatedAt:new Date().toISOString()
   };
-  const id=$v('tId');
   try{
     if(id){
       await db.collection('oficinas').doc(id).update(payload);
@@ -963,18 +1148,9 @@ async function carregarConfigIA(){
   try{
     const res=await fetch('https://thiaguinho-40a14-default-rtdb.firebaseio.com/admin_config.json');
     const cfg=await res.json();
-    if(cfg?.gemini_api_key) $('iaGeminiKey').value=cfg.gemini_api_key;
     if(cfg?.cloudinary_name) $('iaCloudName').value=cfg.cloudinary_name;
     if(cfg?.cloudinary_preset) $('iaCloudPreset').value=cfg.cloudinary_preset;
   }catch(e){}
-}
-
-async function buscarKeyGlobal(){
-  try{
-    const res=await fetch('https://thiaguinho-40a14-default-rtdb.firebaseio.com/admin_config/gemini_api_key.json');
-    const key=await res.json();
-    return key||'';
-  }catch(e){return '';}
 }
 
 function escSA(v){
@@ -984,11 +1160,11 @@ function escSA(v){
 function montarContextoSuperadminIA(){
   const ativos=allTenants.filter(t=>t.status==='Online').length;
   const bloqueados=allTenants.filter(t=>t.status==='Bloqueado').length;
-  const semGemini=allTenants.filter(t=>!t.apiKeys?.gemini).length;
+  const iaAtiva=allTenants.filter(t=>t.modulos?.ia!==false).length;
   const modCount=nome=>allTenants.filter(t=>t.modulos?.[nome]!==false).length;
   return [
     `Tenants carregados: ${allTenants.length}`,
-    `Online: ${ativos}; Bloqueados: ${bloqueados}; Sem chave Gemini propria/global: ${semGemini}`,
+    `Online: ${ativos}; Bloqueados: ${bloqueados}; IA local ativa: ${iaAtiva}`,
     `Modulos habilitados - OS:${modCount('os')} Financeiro:${modCount('financeiro')} Estoque:${modCount('estoque')} IA:${modCount('ia')} Chat:${modCount('chat')}`,
     `Auditoria carregada: ${allAudit.length} evento(s). Financeiro SaaS carregado: ${allSaasFin.length} lancamento(s).`,
     `Tenants recentes: ${allTenants.slice(0,20).map(t=>`${t.nomeFantasia||t.id} status ${t.status||'N/I'} plano ${t.plano||'N/I'} modulos ${Object.entries(t.modulos||{}).filter(([,v])=>v!==false).map(([k])=>k).join('/')||'N/I'}`).join(' | ')}`
@@ -997,75 +1173,83 @@ function montarContextoSuperadminIA(){
 
 function respostaLocalSuperadminIA(prompt, erro){
   const ctx=montarContextoSuperadminIA();
-  return `<b>Resposta local do Superadmin</b>${erro?`<br><small>API indisponivel: ${escSA(erro)}</small>`:''}<br><br>${escSA(ctx).replace(/\n/g,'<br>')}<br><br><b>Leitura:</b> use este painel para auditar tenants, modulos, chaves Gemini e eventos. Se a pergunta depender de dados que nao estao carregados no Superadmin, nao ha dado registrado nesta tela.`;
+  const pergunta=String(prompt||'').trim();
+  const foco=/bloquead/i.test(pergunta)?'Priorize tenants bloqueados e impactos de modulo.':/financeir|mrr|receita/i.test(pergunta)?'Priorize MRR, status financeiro SaaS e inadimplencia carregada.':/modul|permiss/i.test(pergunta)?'Priorize modulos habilitados e bloqueios por tenant.':'Priorize resumo operacional e riscos visiveis.';
+  return `<b>Resposta local do Superadmin</b>${erro?`<br><small>Observacao local: ${escSA(erro)}</small>`:''}<br><br>${escSA(ctx).replace(/\n/g,'<br>')}<br><br><b>Leitura:</b> ${escSA(foco)} Se a pergunta depender de dados que nao estao carregados no Superadmin, nao ha dado registrado nesta tela.`;
 }
 
 async function salvarConfigIA(){
-  const key=$v('iaGeminiKey'), cloud=$v('iaCloudName'), preset=$v('iaCloudPreset');
+  const cloud=$v('iaCloudName'), preset=$v('iaCloudPreset');
   try{
-    // Salva no RTDB global
-    await fetch('https://thiaguinho-40a14-default-rtdb.firebaseio.com/admin_config/gemini_api_key.json',{method:'PUT',body:JSON.stringify(key)});
     await fetch('https://thiaguinho-40a14-default-rtdb.firebaseio.com/admin_config/cloudinary_name.json',{method:'PUT',body:JSON.stringify(cloud)});
     await fetch('https://thiaguinho-40a14-default-rtdb.firebaseio.com/admin_config/cloudinary_preset.json',{method:'PUT',body:JSON.stringify(preset)});
-    // Propaga para todos os tenants que não têm key própria
     const batch=db.batch();
     allTenants.forEach(t=>{
-      if(!t.apiKeys?.gemini&&key){
-        batch.update(db.collection('oficinas').doc(t.id),{'apiKeys.gemini':key,'apiKeys.cloudName':cloud,'apiKeys.cloudPreset':preset});
-        try{batch.update(db.collection('tenants').doc(t.id),{'apiKeys.gemini':key});}catch(e){}
-      }
+      batch.update(db.collection('oficinas').doc(t.id),{'apiKeys.cloudName':cloud,'apiKeys.cloudPreset':preset});
+      try{batch.set(db.collection('tenants').doc(t.id),{apiKeys:{cloudName:cloud,cloudPreset:preset}},{merge:true});}catch(e){}
     });
     await batch.commit();
-    toast('✓ CONFIG SALVA E PROPAGADA PARA '+allTenants.filter(t=>!t.apiKeys?.gemini).length+' TENANTS');
+    toast('✓ CONFIG LOCAL SALVA E CLOUDINARY PROPAGADO PARA '+allTenants.length+' TENANTS');
   }catch(e){toast('✕ ERRO: '+e.message,'err');}
 }
 
-async function testarGemini(){
-  const key=$v('iaGeminiKey'); const prompt=$v('iaTestInput');
-  if(!key){toast('⚠ Configure a key primeiro','warn');return;}
-  if(!prompt){toast('⚠ Digite uma pergunta','warn');return;}
-  const res=$('iaTestResult'); res.style.display='block'; res.innerText='⏳ Chamando Gemini...';
+
+async function aplicarDiagnosticoIAGlobal(liberarTodos){
+  const usuario=$v('iaDiagGlobalUser');
+  const senha=$v('iaDiagGlobalSenha');
+  const portal=$v('iaDiagGlobalPortal')||'https://www.appdiagnosticoautomotivo.com.br/';
+  if(!usuario||!senha){toast('Preencha usuário e senha padrão da IA Diagnóstico','warn');return;}
+  if(liberarTodos && !confirm('Liberar IA Diagnóstico Automotivo para TODOS os tenants?')) return;
   try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error?.message||'Erro HTTP '+r.status);
-    res.innerText=data.candidates?.[0]?.content?.parts?.[0]?.text||'Sem resposta';
-    res.style.color='var(--success)';
-  }catch(e){res.innerText='✕ '+e.message;res.style.color='var(--danger)';}
+    const batch=db.batch();
+    allTenants.forEach(t=>{
+      const ref=db.collection('oficinas').doc(t.id);
+      const patch={
+        integracoes:{
+          iaDiagnosticoAutomotivo:{
+            ativo:liberarTodos ? true : !!(t.modulos&&t.modulos.iaDiagnosticoAutomotivo),
+            moduloLiberado:liberarTodos ? true : !!(t.modulos&&t.modulos.iaDiagnosticoAutomotivo),
+            modo:'portal',
+            nome:'Diagnóstico Automotivo',
+            portalUrl:portal,
+            endpoint:'',
+            usuario,
+            login:usuario,
+            email:usuario,
+            senha,
+            password:senha,
+            atualizadoEm:new Date().toISOString()
+          }
+        },
+        iaDiagnosticoAutomotivo:{
+          ativo:liberarTodos ? true : !!(t.modulos&&t.modulos.iaDiagnosticoAutomotivo),
+          portalUrl:portal,
+          endpoint:'',
+          usuario,
+          senha,
+          atualizadoEm:new Date().toISOString()
+        },
+        updatedAt:new Date().toISOString()
+      };
+      if(liberarTodos) patch.modulos={...(t.modulos||{}),iaDiagnosticoAutomotivo:true};
+      batch.update(ref,patch);
+      try{batch.set(db.collection('tenants').doc(t.id),patch,{merge:true});}catch(e){}
+    });
+    await batch.commit();
+    toast(liberarTodos?'✓ IA Diagnóstico liberada e aplicada para todos':'✓ Credencial padrão aplicada aos tenants já configurados');
+  }catch(e){toast('✕ ERRO IA Diagnóstico: '+e.message,'err');}
 }
 
-async function testarGemini(){
-  const key=$v('iaGeminiKey');
+async function testarCerebroLocalSuperadmin(){
   const prompt=$v('iaTestInput');
   if(!prompt){toast('Digite uma pergunta','warn');return;}
   const res=$('iaTestResult');
   res.style.display='block';
-  res.innerText='Chamando IA...';
-  if(!key){
-    res.innerHTML=respostaLocalSuperadminIA(prompt,'chave Gemini nao configurada');
-    res.style.color='var(--muted2)';
-    return;
-  }
-  try{
-    const systemPrompt=`Voce e o thIAguinho Superadmin. Use somente o contexto abaixo para auditar tenants, modulos, chaves e riscos do SaaS. Nao invente dados e diga quando nao houver dado carregado.\n\n${montarContextoSuperadminIA()}`;
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        contents:[{parts:[{text:prompt}]}],
-        systemInstruction:{parts:[{text:systemPrompt}]},
-        generationConfig:{temperature:.35,maxOutputTokens:1200}
-      })
-    });
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error?.message||'Erro HTTP '+r.status);
-    res.innerHTML=escSA(data.candidates?.[0]?.content?.parts?.map(p=>p.text).filter(Boolean).join('\n')||'Sem resposta').replace(/\n/g,'<br>');
-    res.style.color='var(--success)';
-  }catch(e){
-    res.innerHTML=respostaLocalSuperadminIA(prompt,e.message||e);
-    res.style.color='var(--muted2)';
-  }
+  res.innerText='Consultando dados internos...';
+  res.innerHTML=respostaLocalSuperadminIA(prompt);
+  res.style.color='var(--muted2)';
 }
+window.testarCerebroLocal = testarCerebroLocalSuperadmin;
 
 // SAAS FIN
 function prepSaasFin(){

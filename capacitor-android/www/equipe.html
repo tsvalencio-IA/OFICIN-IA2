@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta charset="UTF-8">
+<script>(function(){try{var t=localStorage.getItem("thiaguinho_theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);else document.documentElement.setAttribute("data-theme","dark");}catch(e){document.documentElement.setAttribute("data-theme","dark");}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>thIAguinho SaaS — Painel da Equipe</title>
 <!-- ═══ PWA ═══ -->
@@ -21,8 +21,10 @@ if ('serviceWorker' in navigator) {
 </script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/config.js"></script>
 <script src="js/os-utils.js"></script>
 <script src="js/links-publicos.js"></script>
+<script src="js/tenant-modules.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -355,6 +357,9 @@ body.equipe-page .overlay.open{display:flex!important;}
   body.equipe-page .k-col-body{max-height:none!important;}
   body.equipe-page .chat-foot,body.equipe-page .ia-foot-wrap{flex-wrap:nowrap!important;}
   body.equipe-page .chat-foot .j-input,body.equipe-page .ia-foot-wrap .j-input{min-width:0!important;font-size:16px!important;}
+  body.equipe-page .equipe-kanban-toolbar{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;}
+  body.equipe-page .equipe-kanban-toolbar>div{max-width:none!important;width:100%!important;}
+  body.equipe-page .equipe-kanban-toolbar .btn-primary{width:100%!important;justify-content:center!important;min-height:40px!important;}
 }
 </style>
 </head>
@@ -409,7 +414,7 @@ body.equipe-page .overlay.open{display:flex!important;}
           <div style="font-family:var(--fm);font-size:0.55rem;color:var(--muted);margin-top:8px;text-align:right;">CLIQUE PARA VER EXTRATO COMPLETO ➔</div>
         </div>
       </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;">
+      <div class="equipe-kanban-toolbar" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;">
         <div style="position:relative;flex:1;max-width:240px;">
           <input class="j-input" id="searchOS" placeholder="Buscar placa..." oninput="renderKanban()" style="padding-left:10px;">
         </div>
@@ -602,8 +607,10 @@ body.equipe-page .overlay.open{display:flex!important;}
       <div style="font-family:var(--fd);font-weight:700;margin-bottom:10px;color:var(--cyan);">GALERIA DE PROVAS</div>
 
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
-        <input type="file" class="j-input" id="mediaFile" accept="image/*,video/*" multiple capture="environment" style="flex:1;min-width:0;" onchange="previewFotosOS(this)">
-        <button class="btn-primary" id="btnUpload" onclick="enviarFotosBatch()" type="button">ENVIAR TODAS</button>
+        <input type="file" class="j-input" id="mediaFile" accept="image/*,video/*" multiple style="display:none;" onchange="previewFotosOS(this)">
+        <button class="btn-ghost" onclick="abrirCameraEquipeOS()" type="button">BATER FOTO</button>
+        <button class="btn-ghost" onclick="abrirGaleriaEquipeOS()" type="button">GALERIA / ARQUIVOS</button>
+        <button class="btn-primary" id="btnUpload" onclick="enviarFotosBatch()" type="button">ENVIAR FILA</button>
       </div>
 
       <div id="mediaPreviewLocal" style="display:none;background:rgba(0,212,255,0.04);border:1px dashed var(--border2);border-radius:3px;padding:10px;margin-bottom:12px;">
@@ -739,10 +746,10 @@ const J = {
   nome: sessionStorage.getItem('j_nome'),
   tnome: sessionStorage.getItem('j_tnome'),
   fid: sessionStorage.getItem('j_fid'),
-  gemini: sessionStorage.getItem('j_gemini'),
   cloudName: sessionStorage.getItem('j_cloud_name')||'dmuvm1o6m',
   cloudPreset: sessionStorage.getItem('j_cloud_preset')||'evolution'
 };
+try { J.oficina = JSON.parse(sessionStorage.getItem('j_oficina') || 'null') || null; } catch(e) { J.oficina = null; }
  if(!J.tid || String(J.role||'').toLowerCase()==='admin') window.location.replace('index.html');
 
 // FIREBASE
@@ -763,6 +770,8 @@ if(appName){
   fbApp=firebase.apps[0]||firebase.initializeApp(FB);
 }
 const db = fbApp.firestore();
+let centralDbEquipe = null;
+try { centralDbEquipe = window.initCentralFirebase ? window.initCentralFirebase() : null; } catch(e) { centralDbEquipe = null; }
 
 // STATE
 let dbOS=[], dbClientes=[], dbVeiculos=[], dbEstoque=[], dbMsgs=[];
@@ -779,6 +788,21 @@ function aplicarModoOperacionalEquipe(){
   const cardComissao = document.getElementById('kpiComissao');
   if (cardComissao && operacional) cardComissao.style.display = 'none';
 }
+function aplicarModulosEquipe(ofi){
+  if(!ofi) return;
+  J.oficina = { id:J.tid, ...ofi };
+  try { sessionStorage.setItem('j_oficina', JSON.stringify(J.oficina)); } catch(e) {}
+  const mods = ofi.modulos || {};
+  document.body.dataset.modIa = mods.ia === false ? 'off' : 'on';
+  document.body.dataset.modChat = mods.chat === false ? 'off' : 'on';
+  document.body.dataset.modRh = mods.rh === false ? 'off' : 'on';
+  document.querySelectorAll('.tab').forEach(tab => {
+    const txt = (tab.textContent || '').toLowerCase();
+    if (txt.includes('thia') || txt.includes('ia')) tab.style.display = mods.ia === false ? 'none' : '';
+    if (txt.includes('chat')) tab.style.display = mods.chat === false ? 'none' : '';
+  });
+  if (typeof window.thiaApplyModuleVisibility === 'function') window.thiaApplyModuleVisibility(document);
+}
 
 // INIT UI
 $('tbTenantNome').innerText = J.tnome || 'Oficina';
@@ -789,6 +813,7 @@ if($('topCargo')) {
   if (roleDisplay.toLowerCase() === 'equipe') roleDisplay = 'MECÂNICO';
   $('topCargo').innerText = roleDisplay.toUpperCase();
 }
+aplicarModulosEquipe(J.oficina);
 aplicarModoOperacionalEquipe();
 
 function repararLayoutEquipe(){
@@ -1026,6 +1051,19 @@ async function quickMoveOS(osId, novoStatus, ev) {
   try {
     const os = dbOS.find(x => x.id === osId);
     const stAntes = os?.status || '';
+    const motivo = prompt([
+      'Informe o motivo/comentario da mudanca de status:',
+      '',
+      `${stAntes || '-'} -> ${novoStatus}`,
+      '',
+      'Esse registro fica na auditoria interna da O.S.'
+    ].join('\n'), 'Atualizacao operacional da equipe.');
+    if (motivo === null) return;
+    const motivoLimpo = String(motivo || '').trim();
+    if (!motivoLimpo) {
+      toast('Mudanca de status cancelada: comentario/motivo obrigatorio.', 'warn');
+      return;
+    }
     if (novoStatus === 'Aprovado' && os && !(window.JOS || window.JarvisOSUtils).hasApproval?.(os)) {
       const result = await (window.JOS || window.JarvisOSUtils).aprovarOrcamentoComSelecao({
         db,
@@ -1034,6 +1072,8 @@ async function quickMoveOS(osId, novoStatus, ev) {
         clientes: dbClientes,
         actorName: J.nome || 'Equipe',
         actorType: 'equipe',
+        motivoStatus: motivoLimpo,
+        origemStatus: 'equipe_kanban',
         toast
       });
       if (result) toast('✓ Orçamento aprovado com os itens selecionados.', 'ok');
@@ -1044,7 +1084,18 @@ async function quickMoveOS(osId, novoStatus, ev) {
 
     const labelAntes = (stAntes === 'Pronto') ? 'Pronto p/ Retirada' : (stAntes || '—');
     const labelNovo  = (novoStatus === 'Pronto') ? 'Pronto p/ Retirada' : novoStatus;
-    tl.push({ dt: new Date().toISOString(), user: J.nome, acao: `Status: ${labelAntes} → ${labelNovo}` });
+    tl.push({
+      dt: new Date().toISOString(),
+      user: J.nome,
+      acao: `Status: ${labelAntes} -> ${labelNovo}. Motivo: ${motivoLimpo}`,
+      tipo: 'status_os',
+      statusAnterior: stAntes || '',
+      statusNovo: novoStatus,
+      motivo: motivoLimpo,
+      origem: 'equipe_kanban',
+      interno: true,
+      visivelCliente: true
+    });
 
     await db.collection('ordens_servico').doc(osId).update({
       status: novoStatus,
@@ -1110,8 +1161,8 @@ function _dispararWppPronto(os) {
   const msg = `Olá ${cliente.nome}! 👋\n\nAqui é da *${nomeOficina}*.\n\n✅ Seu veículo *${placa}${modelo}* está *PRONTO PARA RETIRADA*!\n\nPassamos a O.S. #${os.id.slice(-6).toUpperCase()} para o caixa. Pode vir buscar quando for melhor pra você.\n\nAguardamos!`;
 
   if (confirm(`Enviar aviso automático para ${cliente.nome} via WhatsApp?\n\n✓ PRONTO PARA RETIRADA\nVeículo ${placa}`)) {
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    if (typeof window.thiaOpenWhatsApp === 'function') window.thiaOpenWhatsApp(fone, msg);
+    else window.open(`https://web.whatsapp.com/send?phone=55${fone}&text=${encodeURIComponent(msg)}`, '_blank');
   }
 }
 
@@ -1137,133 +1188,21 @@ async function iaEnviar() {
   inp.value = '';
 
   _iaMsgUser(msg);
-  const lid = _iaMsgBot('<span class="j-spinner"></span> Analisando...');
-
-  const key = J.gemini || null;
+  const lid = _iaMsgBot('<span class="j-spinner"></span> Consultando dados internos...');
   _iaHist.push({ role: 'user', text: msg });
 
-  if (!key) {
-    _iaReplace(lid, '⚠ <strong>Chave da IA não configurada.</strong> Peça ao administrador para inserir a API Key no painel.');
-    return;
-  }
-
-  // HISTÓRICO CIRÚRGICO: Pega apenas OS ativas no kanban e as 10 últimas concluídas
-  // Isso evita estourar o limite de tokens e impede que a IA trave.
-  let historyContext = "═══════════════════════════════════════\nVEÍCULOS ATUAIS NO PÁTIO E HISTÓRICO RECENTE:\n═══════════════════════════════════════\n";
-
-  const osAtivas = dbOS.filter(o => o.status !== 'Concluido' && o.status !== 'Cancelado');
-  const osRecentes = dbOS.filter(o => o.status === 'Concluido').sort((a,b)=>new Date(b.updatedAt||0)-new Date(a.updatedAt||0)).slice(0, 10);
-  const osLimitadas = [...osAtivas, ...osRecentes];
-  
-  const porPlaca = {};
-  osLimitadas.forEach(o => {
-    const placa = o.placa || dbVeiculos.find(v=>v.id===o.veiculoId)?.placa || 'S/P';
-    if (!porPlaca[placa]) porPlaca[placa] = [];
-    porPlaca[placa].push(o);
-  });
-
-  Object.entries(porPlaca).forEach(([placa, oss]) => {
-    historyContext += `\n🚗 PLACA: ${placa} (${oss.length} OS)\n`;
-    oss.forEach(o => {
-      const v = dbVeiculos.find(x=>x.id===o.veiculoId);
-      const modelo = v?.modelo || o.tipoVeiculo || '';
-      historyContext += `  • [${o.data||'?'}] OS#${o.id.slice(-5).toUpperCase()} ${modelo} — KM: ${o.km||'?'}\n`;
-      if (o.desc)        historyContext += `    RELATO: ${o.desc}\n`;
-      if (o.diagnostico) historyContext += `    DIAG: ${o.diagnostico}\n`;
-      if (o.pecas?.length)    historyContext += `    PEÇAS: ${o.pecas.map(p=>`${p.desc} x${p.qtd}`).join(', ')}\n`;
-      if (o.servicos?.length) historyContext += `    SERVIÇOS: ${o.servicos.map(s=>s.desc).join(', ')}\n`;
-    });
-  });
-
-  // PROMPT BLINDADO (Sem diretiva de busca no Google para evitar "Sem resposta")
-  const systemPrompt = `Você é o thIAguinho, assistente técnico nível Doutor-IE desta oficina mecânica.
-
-REGRAS ABSOLUTAS:
-1. AUDITORIA: Se o mecânico mencionar uma placa, verifique no histórico abaixo se a peça já foi trocada. Alerte em **NEGRITO** se estiver na garantia (Amortecedor: 2 anos; Pastilha: 3 meses; Motor: 3 meses).
-2. FORMATO: Seja clínico e direto. Não invente dados. Para códigos OBD, dê Significado + Causas + Sintomas.
-3. Não pesquise na web, responda apenas com seu conhecimento nativo como Mecânico Pro.
-
-Responda sempre em português do Brasil.
-
-${historyContext}`;
-
   try {
-    const contents = _iaHist.map(h => ({ role: h.role==='user'?'user':'model', parts:[{text:h.text}] }));
-    
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-          // Configurações de safety mais permissivas para discussão técnica de oficina
-          // (ex: "queima de embreagem" pode ser detectada como linguagem violenta sem isso)
-        },
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
-        ]
-      })
-    });
-    
-    const data = await res.json();
-    
-    // ═══ DIAGNÓSTICO ROBUSTO DA RESPOSTA (LOTE IA-EQUIPE) ═══
-    // A IA do Cliente sempre funciona porque trata todos os casos.
-    // A do Equipe falhava silenciosamente quando candidate vinha vazio.
-    if (!res.ok) {
-      const errMsg = data?.error?.message || `HTTP ${res.status}`;
-      let dica = '';
-      if (/API key not valid|API_KEY_INVALID/i.test(errMsg)) {
-        dica = '<br><br><em>A chave Gemini é inválida. Peça ao gestor pra atualizar em <code>oficinas.apiKeys.gemini</code> no Firestore.</em>';
-      } else if (/quota|RESOURCE_EXHAUSTED/i.test(errMsg)) {
-        dica = '<br><br><em>Cota da API Gemini esgotada. Tente em alguns minutos ou peça ao gestor para atualizar a chave.</em>';
-      }
-      throw new Error(errMsg + dica);
-    }
-
-    // Verifica se há candidatos
-    if (!data.candidates || data.candidates.length === 0) {
-      // Pode ser bloqueio na entrada (promptFeedback)
-      const blockReason = data?.promptFeedback?.blockReason;
-      if (blockReason) {
-        throw new Error(`A pergunta foi bloqueada pela política de segurança da IA (motivo: ${blockReason}). Reformule sem termos sensíveis.`);
-      }
-      throw new Error('A IA não retornou candidatos de resposta. Tente reformular.');
-    }
-
-    const candidate = data.candidates[0];
-    const finishReason = candidate.finishReason;
-    let resp = candidate.content?.parts?.map(p => p.text).filter(Boolean).join('\n') || '';
-
-    // Tratamento explícito por finishReason
-    if (!resp) {
-      if (finishReason === 'SAFETY' || finishReason === 'BLOCKED') {
-        const safetyRatings = candidate.safetyRatings || [];
-        const bloqueado = safetyRatings.filter(r => r.blocked).map(r => r.category).join(', ');
-        throw new Error(`A resposta foi bloqueada por filtro de segurança (${bloqueado || finishReason}). Reformule a pergunta de forma mais técnica.`);
-      } else if (finishReason === 'MAX_TOKENS') {
-        throw new Error('A resposta da IA ultrapassou o limite de tamanho. Faça uma pergunta mais específica.');
-      } else if (finishReason === 'RECITATION') {
-        throw new Error('A IA bloqueou a resposta por suspeita de citação direta. Reformule.');
-      } else {
-        throw new Error(`A IA terminou sem texto (motivo: ${finishReason || 'desconhecido'}). Tente novamente.`);
-      }
-    }
-
-    _iaHist.push({ role: 'model', text: resp });
-    _iaReplace(lid, resp.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--warn)">$1</strong>').replace(/\*(.*?)\*/g,'<em>$1</em>'));
+    if (typeof window.thiaCarregarCerebroGlobal === 'function') await window.thiaCarregarCerebroGlobal();
+    const resp = typeof window.thiaResponderLocal === 'function'
+      ? window.thiaResponderLocal(msg, { perfil:'equipe' })
+      : 'Motor interno indisponivel nesta tela.';
+    _iaHist.push({ role: 'model', text: String(resp).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '') });
+    _iaReplace(lid, resp);
   } catch(e) {
-    // Log de erro verdadeiro para o usuário não ficar no escuro
-    _iaReplace(lid, `⚠ <strong>Ocorreu um erro técnico na IA:</strong><br>${e.message}`);
+    _iaReplace(lid, `Nao consegui cruzar os dados internos:<br>${e.message || e}`);
     console.error('[IA Equipe] Erro:', e);
   }
 }
-
 let _iaCnt = 0;
 function _iaMsgUser(txt) {
   const c = $('iaMsgs'); if(!c) return;
@@ -1409,6 +1348,91 @@ async function enviarArquivoChat(input){
 
 let _batchOSFiles = [];
 
+function abrirCameraEquipeOS(){
+  const input = $('mediaFile');
+  if(!input) return;
+  input.setAttribute('accept','image/*');
+  input.setAttribute('capture','environment');
+  input.multiple = false;
+  try{ input.value=''; }catch(e){}
+  input.click();
+}
+
+function abrirGaleriaEquipeOS(){
+  const input = $('mediaFile');
+  if(!input) return;
+  input.setAttribute('accept','image/*,video/*');
+  input.removeAttribute('capture');
+  input.multiple = true;
+  try{ input.value=''; }catch(e){}
+  input.click();
+}
+
+async function comprimirImagemEquipe(file){
+  if(!file || !/^image\//.test(file.type||'') || /gif$/i.test(file.type||'')) return file;
+  if(file.size && file.size < 380 * 1024) return file;
+  return new Promise(resolve=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const maxSide = 1600;
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxSide / Math.max(width, height));
+        width = Math.max(1, Math.round(width * scale));
+        height = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d', { alpha:false });
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob=>{
+          URL.revokeObjectURL(url);
+          if(!blob || (file.size && blob.size >= file.size)) return resolve(file);
+          const safeName = String(file.name || 'foto-os.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+          resolve(new File([blob], safeName, { type:'image/jpeg', lastModified:Date.now() }));
+        }, 'image/jpeg', 0.74);
+      }catch(e){ URL.revokeObjectURL(url); resolve(file); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+async function uploadEquipeCloudinary(file){
+  const finalFile = await comprimirImagemEquipe(file);
+  const fd = new FormData();
+  fd.append('file', finalFile);
+  fd.append('upload_preset', J.cloudPreset);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${J.cloudName}/auto/upload`,{method:'POST',body:fd});
+  const data = await res.json();
+  if(!data || !data.secure_url) throw new Error(data?.error?.message || 'Falha no upload.');
+  return {
+    url:data.secure_url,
+    type:data.resource_type || (/^video\//.test(file.type||'') ? 'video' : 'image'),
+    name:file.name || '',
+    bytes:data.bytes || finalFile.size || file.size || 0,
+    uploadedAt:new Date().toISOString()
+  };
+}
+
+async function uploadEquipeComLimite(files, limit, onProgress){
+  const fila = Array.from(files || []);
+  const results = new Array(fila.length);
+  let cursor = 0, done = 0;
+  async function worker(){
+    while(cursor < fila.length){
+      const idx = cursor++;
+      try{ results[idx] = { ok:true, item: await uploadEquipeCloudinary(fila[idx]) }; }
+      catch(e){ results[idx] = { ok:false, error:e }; }
+      done++;
+      if(typeof onProgress === 'function') onProgress(done, fila.length);
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(limit || 2, fila.length)}, ()=>worker()));
+  return results;
+}
+
 function previewFotosOS(input){
   if(!input || !input.files || !input.files.length){ limparPreviewOS(); return; }
   const novos = Array.from(input.files);
@@ -1465,20 +1489,12 @@ async function enviarFotosBatch(){
   if(prog){ prog.style.display='inline'; prog.innerText='0/'+_batchOSFiles.length; }
 
   const total = _batchOSFiles.length;
-  const novasUrls = []; let sucesso=0, falhas=0;
-
-  for(let i=0; i<total; i++){
-    const f = _batchOSFiles[i];
-    const fd = new FormData();
-    fd.append('file', f);
-    fd.append('upload_preset', J.cloudPreset);
-    try{
-      const res = await fetch(`https://api.cloudinary.com/v1_1/${J.cloudName}/auto/upload`,{method:'POST',body:fd});
-      const data = await res.json();
-      if(data && data.secure_url){ novasUrls.push({ url:data.secure_url, type:data.resource_type||'image' }); sucesso++; }else{ falhas++; }
-    }catch(e){ falhas++; }
-    if(prog){ prog.innerText = (i+1)+'/'+total; }
-  }
+  const resultados = await uploadEquipeComLimite(_batchOSFiles, 2, (done, all)=>{
+    if(prog){ prog.innerText = done+'/'+all; }
+  });
+  const novasUrls = resultados.filter(r=>r && r.ok && r.item).map(r=>r.item);
+  const sucesso = novasUrls.length;
+  const falhas = total - sucesso;
 
   const jaSalvo = JSON.parse($('mediaArray').value||'[]');
   const final = jaSalvo.concat(novasUrls);
@@ -1486,7 +1502,7 @@ async function enviarFotosBatch(){
   renderMediaGrid();
   _batchOSFiles = []; _renderPreviewOS();
 
-  if(btn){ btn.disabled=false; btn.innerText='ENVIAR TODAS'; }
+  if(btn){ btn.disabled=false; btn.innerText='ENVIAR FILA'; }
   if(prog){ prog.style.display='none'; prog.innerText=''; }
   if(sucesso && !falhas) toast(`✓ ${sucesso} arquivo(s) enviado(s). Lembre de SALVAR a O.S.`,'ok');
   else if(sucesso && falhas) toast(`⚠ ${sucesso} ok, ${falhas} falhou. Lembre de SALVAR a O.S.`,'warn');
@@ -1558,6 +1574,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   db.collection('oficinas').doc(J.tid).onSnapshot(doc => {
     if (doc.exists) {
       const ofi = doc.data();
+      aplicarModulosEquipe(ofi);
       const podeVer = ofi.modulos && ofi.modulos.comissoes === true && podeVerFinanceiroEquipe();
       const cardComissao = document.getElementById('kpiComissao');
       
@@ -1628,6 +1645,28 @@ document.addEventListener('DOMContentLoaded',()=>{
       }
     }
   });
+  if (centralDbEquipe) {
+    const refs = Array.from(new Set([
+      J.tid,
+      J.oficina?.id,
+      J.oficina?.slug,
+      J.oficina?.publicSlug,
+      J.oficina?.oficinaSlug,
+      J.oficina?.tenantSlug
+    ].map(v => String(v || '').trim()).filter(Boolean)));
+    refs.forEach(ref => {
+      centralDbEquipe.collection('oficinas').doc(ref).onSnapshot(doc => {
+        if (doc.exists) aplicarModulosEquipe(doc.data());
+      }, err => console.warn('[Equipe] modulos central doc indisponiveis', err.message));
+    });
+    ['slug','publicSlug','oficinaSlug','tenantSlug'].forEach(campo => {
+      refs.forEach(ref => {
+        centralDbEquipe.collection('oficinas').where(campo, '==', ref).limit(1).onSnapshot(snap => {
+          if (!snap.empty) aplicarModulosEquipe(snap.docs[0].data());
+        }, err => console.warn('[Equipe] modulos central slug indisponiveis', err.message));
+      });
+    });
+  }
 });
 // ============================================================
 // KPIs
@@ -2015,15 +2054,34 @@ async function salvarOS(){
   const id = $v('osId');
   const funcUser = J.nome || 'Mecânico';
   let tl = [];
+  let motivoTriagemEquipe = '';
+  let moverTriagemConfirmado = false;
+  const isTriagemEquipe = st => /^(aguardando|triagem)$/i.test(String(st || '').trim());
 
   // --- INÍCIO: DEEP DIFF (AUDITORIA GRANULAR) ---
   if (id) {
       const oldOS = dbOS.find(x => x.id === id) || {};
+      const oldMediaCountStatus = (oldOS.media || oldOS.fotos || []).length;
+      const newMediaCountStatus = (JSON.parse($('mediaArray').value || '[]')).length;
+      if (newMediaCountStatus > oldMediaCountStatus && isTriagemEquipe($v('osStatus')) && !isTriagemEquipe(oldOS.status)) {
+          const mover = confirm('Voce anexou foto/evidencia, mas a O.S. esta marcada para voltar para TRIAGEM.\n\nOK = mover para Triagem com motivo.\nCancelar = somente atualizar a evidencia e manter o status atual.');
+          if (!mover) {
+              if ($('osStatus')) $('osStatus').value = oldOS.status || 'Aguardando';
+          } else {
+              motivoTriagemEquipe = prompt('Informe o motivo para mover esta O.S. para Triagem:') || '';
+              motivoTriagemEquipe = motivoTriagemEquipe.trim();
+              if (!motivoTriagemEquipe) {
+                  toast('Motivo obrigatorio para mover a O.S. para Triagem.', 'warn');
+                  return;
+              }
+              moverTriagemConfirmado = true;
+          }
+      }
       tl = oldOS.timeline ? [...oldOS.timeline] : JSON.parse($v('tlData') || '[]');
       let registouAlgo = false;
 
       if (oldOS.status !== $v('osStatus')) {
-          tl.push({ dt: new Date().toISOString(), user: funcUser, acao: `Status alterado para: ${$v('osStatus')}` });
+          tl.push({ dt: new Date().toISOString(), user: funcUser, acao: `Status alterado para: ${$v('osStatus')}${motivoTriagemEquipe ? '. Motivo: ' + motivoTriagemEquipe : ''}` });
           registouAlgo = true;
       }
 
@@ -2083,7 +2141,7 @@ async function salvarOS(){
           }
       });
 
-      const oldMedia = (oldOS.media || []).length;
+      const oldMedia = (oldOS.media || oldOS.fotos || []).length;
       const newMedia = (JSON.parse($('mediaArray').value || '[]')).length;
       if (newMedia > oldMedia) {
           tl.push({ dt: new Date().toISOString(), user: funcUser, acao: `Anexou ${newMedia - oldMedia} foto(s) de evidência.` });
@@ -2124,10 +2182,31 @@ async function salvarOS(){
     p.servicos = osAntigaAprovacao.servicos || [];
     p.total = osAntigaAprovacao.total || p.total;
     p.maoObra = osAntigaAprovacao.maoObra || p.maoObra;
-    p.aprovacao = osAntigaAprovacao.aprovacao;
-    p.itensAprovados = osAntigaAprovacao.itensAprovados || [];
-    p.totalAprovado = osAntigaAprovacao.totalAprovado || 0;
-    p.aprovacaoAtiva = osAntigaAprovacao.aprovacaoAtiva !== false;
+    if (moverTriagemConfirmado && isTriagemEquipe(p.status)) {
+      const hist = Array.isArray(osAntigaAprovacao.aprovacaoHistorico) ? osAntigaAprovacao.aprovacaoHistorico.slice() : [];
+      hist.push({
+        aprovadoEm: osAntigaAprovacao.aprovacao?.aprovadoEm || osAntigaAprovacao.updatedAt || new Date().toISOString(),
+        arquivadoEm: new Date().toISOString(),
+        arquivadoPor: J.nome || 'Equipe',
+        origem: 'equipe_foto_para_triagem',
+        motivo: motivoTriagemEquipe,
+        aprovacao: osAntigaAprovacao.aprovacao || null,
+        itensAprovados: osAntigaAprovacao.itensAprovados || [],
+        totalAprovado: osAntigaAprovacao.totalAprovado || 0
+      });
+      p.aprovacaoHistorico = hist;
+      p.aprovacao = firebase.firestore.FieldValue.delete();
+      p.itensAprovados = firebase.firestore.FieldValue.delete();
+      p.totalAprovado = firebase.firestore.FieldValue.delete();
+      p.aprovacaoAtiva = false;
+      tl.push({ dt: new Date().toISOString(), user: J.nome || 'Equipe', acao: `Arquivou aprovacao ativa ao mover para Triagem. Motivo: ${motivoTriagemEquipe}` });
+      p.timeline = tl;
+    } else {
+      p.aprovacao = osAntigaAprovacao.aprovacao;
+      p.itensAprovados = osAntigaAprovacao.itensAprovados || [];
+      p.totalAprovado = osAntigaAprovacao.totalAprovado || 0;
+      p.aprovacaoAtiva = osAntigaAprovacao.aprovacaoAtiva !== false;
+    }
     if (osAntigaAprovacao.execucaoItens) p.execucaoItens = osAntigaAprovacao.execucaoItens;
   }
   if (p.status === 'Aprovado' && !(UOS.hasApproval?.(osAntigaAprovacao))) {
@@ -2204,7 +2283,7 @@ function renderMediaGrid(){
   const media=JSON.parse($('mediaArray')?.value||'[]');
   $('mediaGrid').innerHTML=media.map((m,i)=>`
     <div class="media-item">
-      ${m.type==='video'?`<video src="${m.url}" controls></video>`:`<img src="${m.url}" onclick="window.open('${m.url}')" style="cursor:zoom-in">`}
+      ${m.type==='video'?`<video src="${m.url}" controls preload="metadata"></video>`:`<img src="${m.url}" loading="lazy" referrerpolicy="no-referrer" onclick="window.open('${m.url}')" style="cursor:zoom-in">`}
       <button class="media-del" onclick="rmMedia(${i})">✕</button>
     </div>`).join('');
 }
@@ -2329,35 +2408,41 @@ function fecharModalIA() {
 let _iaOSMode = '', _iaOSSugestao = null;
 
 async function _iaConsultarOS(prompt, modo) {
-  const key = J.gemini || null;
-  if (!key) { toast('⚠ Chave Gemini não configurada.','warn'); return null; }
-  _iaOSMode = modo; _iaOSSugestao = null;
+  _iaOSMode = modo;
+  _iaOSSugestao = null;
   document.getElementById('btnAplicarIaOS').style.display = 'none';
   document.getElementById('modalIaOSBody').innerHTML =
     `<div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:40px 0;">
       <span class="j-spinner" style="border-color:#A78BFA;border-right-color:transparent;width:28px;height:28px;border-width:3px;"></span>
-      <span style="font-family:var(--fm);font-size:0.75rem;color:#A78BFA;letter-spacing:2px;">ANALISANDO HISTÓRICO...</span>
+      <span style="font-family:var(--fm);font-size:0.75rem;color:#A78BFA;letter-spacing:2px;">CRUZANDO DADOS INTERNOS...</span>
     </div>`;
-  abrirModalIA(modo==='diag'?'SUGESTÃO DE DIAGNÓSTICO':modo==='servicos'?'SUGESTÃO DE SERVIÇOS':'ANÁLISE DA O.S.');
-  
+  abrirModalIA(modo==='diag'?'SUGESTAO DE DIAGNOSTICO':modo==='servicos'?'SUGESTAO DE SERVICOS':'ANALISE DA O.S.');
+
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        contents:[{role:'user',parts:[{text:prompt}]}],
-        systemInstruction:{parts:[{text:'Você é o thIAguinho, assistente técnico de oficina mecânica. Responda em português do Brasil. Seja objetivo, técnico e clínico. Use ** para negrito e - para listas.'}]}
-        // REMOVIDO PARA EVITAR ERRO: tools:[{google_search:{}}]
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || `Erro HTTP ${res.status} retornado pela API.`);
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    if (typeof window.thiaCarregarCerebroGlobal === 'function') await window.thiaCarregarCerebroGlobal();
+    const strip = html => String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+    if (modo === 'servicos') {
+      const t = String(prompt || '').toLowerCase();
+      const out = [];
+      if (/freio|pastilha|disco|sapata|cilindro|pin[cç]a/.test(t)) out.push('Inspecao e reparo do sistema de freio', 'Sangria e teste do sistema de freio');
+      if (/amortec|suspens|bandeja|pivo|bieleta|coxim|mola/.test(t)) out.push('Diagnostico do sistema de suspensao', 'Alinhamento apos reparo de suspensao');
+      if (/bateria|alternador|arranque|partida|sensor|lampada|farol/.test(t)) out.push('Diagnostico eletrico e teste de carga');
+      if (/radiador|arrefecimento|ventoinha|mangueira|reservatorio|agua/.test(t)) out.push('Teste de pressao e reparo do sistema de arrefecimento');
+      if (/vela|bobina|inje[cç][aã]o|bico|combustivel|bomba/.test(t)) out.push('Diagnostico do sistema de injecao e alimentacao');
+      if (!out.length) out.push('Diagnostico tecnico conforme relato', 'Inspecao visual e teste funcional do sistema informado');
+      return Array.from(new Set(out)).slice(0, 6).map(s => '- ' + s).join('\n');
+    }
+    const resp = typeof window.thiaResponderLocal === 'function'
+      ? window.thiaResponderLocal(prompt, { perfil:'equipe' })
+      : '';
+    const local = strip(resp);
+    if (local && !/^Preciso de mais contexto/i.test(local)) return local;
+    return 'DIAGNOSTICO SUGERIDO: validar o relato, conferir historico da placa/modelo e executar testes dirigidos antes de trocar pecas.\n\nCausas provaveis:\n- Falha relacionada ao sistema informado no relato.\n- Componente com desgaste ou mau contato.\n- Defeito intermitente que precisa de teste funcional.\n\nComponentes a verificar:\n- Itens citados no relato.\n- Conectores, fixacoes, vazamentos e sinais de desgaste.\n\nAlerta de garantia: confira no historico da O.S. se a peca ja foi executada recentemente.';
   } catch(e) {
-    document.getElementById('modalIaOSBody').innerHTML=`<div style="color:var(--danger);font-family:var(--fm);padding:20px;">⚠ <strong>Erro na conexão com a IA:</strong><br>${e.message}<br><br>Verifique a sua chave de API ou conexão com a internet.</div>`;
+    document.getElementById('modalIaOSBody').innerHTML=`<div style="color:var(--danger);font-family:var(--fm);padding:20px;">Nao consegui cruzar os dados internos:<br>${e.message || e}</div>`;
     return null;
   }
 }
-
 async function iaSugerirDiagnostico() {
   const problema = $v('osDesc');
   if (!problema) { toast('⚠ Descreva o problema primeiro.','warn'); return; }
@@ -2441,6 +2526,10 @@ function aplicarSugestaoIA() {
 <script src="js/final-1010-regras-os.js"></script>
 <script src="js/theme.js"></script>
 <script src="js/hardening-comercial.js"></script>
+<script src="js/ia.js"></script>
+<script src="js/ia-externa.js"></script>
 <script src="js/uix-theme-fix.js"></script>
 </body>
 </html>
+
+
