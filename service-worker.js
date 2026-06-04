@@ -12,7 +12,7 @@
  *
  * Powered by thIAguinho Soluções Digitais
  */
-const CACHE_VERSION = 'thiaguinho-operacional-fiscal-financeiro-20260601-52';
+const CACHE_VERSION = 'thiaguinho-operacional-fiscal-financeiro-20260604-estoque-mobile-ia-real-54';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 
@@ -55,6 +55,7 @@ const PRECACHE_URLS_RAW = [
   './js/hardening-comercial.js',
   './js/uix-theme-fix.js',
   './js/hardening-operacional-20260515.js',
+  './js/mobile-estoque-fix.js',
   './js/operacional-cadastros-nf-fix-20260518.js',
   './js/superadmin-cadastros-fix-20260518.js',
   './js/theme.js',
