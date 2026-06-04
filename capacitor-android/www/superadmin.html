@@ -415,6 +415,17 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
         <div class="form-group"><label class="j-label">Endpoint/proxy seguro (opcional)</label><input class="j-input" id="tDiagIAEndpoint" placeholder="preencher somente quando houver API/proxy"></div>
       </div>
       <div class="form-row c2">
+        <div class="form-group"><label class="j-label">Supabase URL da IA</label><input class="j-input" id="tDiagIASupabaseUrl" placeholder="https://luazuifwvyeabuldlvzw.supabase.co"></div>
+        <div class="form-group"><label class="j-label">Função da IA</label><input class="j-input" id="tDiagIAFunctionName" placeholder="diagnostic-chat"></div>
+      </div>
+      <div class="form-group">
+        <label class="j-label">Supabase anon/apiKey pública</label>
+        <input class="j-input" id="tDiagIAAnonKey" placeholder="cole aqui a apikey/anon key se o login por API pedir">
+        <div style="font-family:var(--fm);font-size:0.62rem;color:var(--muted2);line-height:1.45;margin-top:5px;">
+          Endpoint real identificado: /functions/v1/diagnostic-chat. Esta chave é a pública do Supabase, diferente da senha do usuário.
+        </div>
+      </div>
+      <div class="form-row c2">
         <label class="mod-check" style="display:flex;"><input type="checkbox" id="tDiagIAEmbedInterno" checked> Abrir dentro do OFICIN-IA</label>
         <label class="mod-check" style="display:flex;"><input type="checkbox" id="tDiagIAAutoLogin" checked> Tentar auto-login do tenant</label>
       </div>
@@ -737,7 +748,7 @@ const CAMPOS_DADOS_OFICINA=[
   'tRazaoSocial','tCnpj','tEndereco','tNumero','tBairro','tCidade','tUf','tCep',
   'tTelefone','tEmail','tResponsavel','tOrcamentista','tRepresentante','tLogoUrl','tAssinaturaNome','tAssinaturaCargo','tAssinaturaDocumento','tAssinaturaUrl',
   'tPublicSlug','tPublicBaseUrl','tBrainContexto','tBrainCatalogos','tBrainErros','tBrainRegras','tBrainProcedimentos',
-  'tTplPdfOrcamento','tTplPdfLaudo','tTplPlanilhaPMSP','tTplObservacoes','tDiagIAUser','tDiagIASenha','tDiagIAPortalUrl','tDiagIAEndpoint','tDiagIAEmbedInterno','tDiagIAAutoLogin'
+  'tTplPdfOrcamento','tTplPdfLaudo','tTplPlanilhaPMSP','tTplObservacoes','tDiagIAUser','tDiagIASenha','tDiagIAPortalUrl','tDiagIAEndpoint','tDiagIASupabaseUrl','tDiagIAFunctionName','tDiagIAAnonKey','tDiagIAEmbedInterno','tDiagIAAutoLogin'
 ];
 const CAMPOS_FIREBASE_OFICINA=[
   'tFbApiKey','tFbAuthDomain','tFbProjectId','tFbStorageBucket','tFbMessagingSenderId','tFbAppId'
@@ -849,6 +860,9 @@ function prepTenant(mode,id=null){
     if($('tDiagIASenha')) $('tDiagIASenha').value=iaDiag.senha||iaDiag.password||'';
     if($('tDiagIAPortalUrl')) $('tDiagIAPortalUrl').value=iaDiag.portalUrl||iaDiag.url||'https://www.appdiagnosticoautomotivo.com.br/';
     if($('tDiagIAEndpoint')) $('tDiagIAEndpoint').value=iaDiag.endpoint||iaDiag.proxyUrl||'';
+    if($('tDiagIASupabaseUrl')) $('tDiagIASupabaseUrl').value=iaDiag.supabaseUrl||iaDiag.supabaseProjectUrl||'https://luazuifwvyeabuldlvzw.supabase.co';
+    if($('tDiagIAFunctionName')) $('tDiagIAFunctionName').value=iaDiag.functionName||iaDiag.funcao||'diagnostic-chat';
+    if($('tDiagIAAnonKey')) $('tDiagIAAnonKey').value=iaDiag.anonKey||iaDiag.supabaseAnonKey||iaDiag.apiKey||iaDiag.apikey||'';
     if($('tDiagIAEmbedInterno')) $('tDiagIAEmbedInterno').checked=iaDiag.embedInterno!==false;
     if($('tDiagIAAutoLogin')) $('tDiagIAAutoLogin').checked=iaDiag.autoLogin!==false;
     $('mAgd').checked=!!m.agenda; $('mRH').checked=!!m.rh;
@@ -1077,6 +1091,12 @@ async function salvarTenant(){
         nome:'Diagnóstico Automotivo',
         portalUrl:$v('tDiagIAPortalUrl')||'https://www.appdiagnosticoautomotivo.com.br/',
         endpoint:$v('tDiagIAEndpoint'),
+        supabaseUrl:$v('tDiagIASupabaseUrl')||'https://luazuifwvyeabuldlvzw.supabase.co',
+        functionName:$v('tDiagIAFunctionName')||'diagnostic-chat',
+        functionUrl:($v('tDiagIASupabaseUrl')||'https://luazuifwvyeabuldlvzw.supabase.co').replace(/\/$/,'') + '/functions/v1/' + ($v('tDiagIAFunctionName')||'diagnostic-chat'),
+        anonKey:$v('tDiagIAAnonKey'),
+        supabaseAnonKey:$v('tDiagIAAnonKey'),
+        usarApiReal:true,
         embedInterno:$('tDiagIAEmbedInterno')?$('tDiagIAEmbedInterno').checked:true,
         autoLogin:$('tDiagIAAutoLogin')?$('tDiagIAAutoLogin').checked:true,
         usuario:$v('tDiagIAUser'),
